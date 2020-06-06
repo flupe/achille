@@ -1,0 +1,34 @@
+{-# LANGUAGE OverloadedStrings, BlockArguments #-}
+module Templates where
+
+-- outer :: Html () -> Html ()
+-- outer body =
+--     doctypehtml_ do
+--         head_ do
+--             meta_ [charset_ "utf-8"]
+--             meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1.0, user-scalable=yes"]
+-- 
+--             meta_ [name_ "theme-color", content_ "#000000"]
+--             meta_ [name_ "robots", content_ "index, follow"]
+--             meta_ [httpEquiv_ "x-ua-compatible", content_ "ie=edge"]
+-- 
+--             title_ "SBBLS"
+-- 
+--             link_ [rel_ "stylesheet", href_ "/assets/theme.css"]
+--             meta_ [name_ "author", content_ "flupe"]
+-- 
+-- 
+--         body_ do
+--             header_ [id_ "hd"] do
+--               section_ do
+--                 nav_ do
+--                   a_ [href_ "/quid.html", title_ "Quid"] "Quid"
+-- 
+--             main_ [role_ "main"] body
+-- 
+--             footer_ [id_ "ft"] do
+--               "flupe 2020 · "
+--               a_ [href_ "https://creativecommons.org/licenses/by-nc/2.0/"] "CC BY-NC 2.0"
+--               " · "
+--               a_ [href_ "https://instagram.com/ba.bou.m/"] "instagram"
+-- 

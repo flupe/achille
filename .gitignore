@@ -1,0 +1,6 @@
+build
+dist-newstyle
+_cache
+_site
+*.agdai
+*~
