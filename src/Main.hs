@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE BlockArguments    #-}
 
-import Prelude hiding (readFile, read)
+import Data.String
 import Options.Applicative
 import Data.Semigroup       ((<>))
 import System.FilePath      ((</>), (-<.>), splitExtensions, addExtension)
@@ -9,17 +9,20 @@ import System.Process       (callCommand)
 import System.Directory     (removePathForcibly)
 import Codec.Picture        (dynamicPixelMap)
 import Codec.Picture.Extra  (scaleBilinear)
+import Control.Monad
 import Data.Functor         ((<&>))
-import Control.Monad        (void, mapM)
 import Data.Function        ((&))
 import Data.List            (sort)
+import Prelude hiding (readFile, read)
 import Text.Pandoc.Options
+
 
 import Templates
 import Recipe hiding (compilePandoc)
 import Config
 import Task
 import Item
+
 
 compilePandoc = readPandoc >>= renderPandocWith wopts
     where wopts = def
@@ -57,17 +60,16 @@ main = customExecParser p opts >>= runCommand
 runCommand :: Command -> IO ()
 runCommand Deploy = callCommand deployCmd
 runCommand Clean  = removePathForcibly outputDir
-runCommand Build  = runTask build
+                 >> removePathForcibly cacheFile
+runCommand Build  = void $ achille build
 
-build :: Task ()
+
 build = do
-    with "assets/theme.css" copy
+    with "quid.rst" $ void $
+        (compilePandoc <&> outer >>= saveTo (-<.> "html"))
+        <?> "building visual index"
 
-    pictures <- match "visual/*/*" $
-        copy <?> "saving image"
-        -- readImage
-        --     <&> scaleBilinear 40 40
-        --     >>= saveTo (+<.> "thumb")
+    pictures <- match "visual/*/*" $ copy <?> "saving image"
 
     with "visual.rst" $ do
         txt    <- compilePandoc
@@ -81,9 +83,6 @@ build = do
             >>= saveTo (-<.> "html")
 
     with "index.rst" $
-        compilePandoc
+        compilePandoc <?> "rendering index"
             <&> renderIndex posts
             >>= saveTo (-<.> "html")
-
-    with "quid.rst" $ void $
-        compilePandoc <&> outer >>= saveTo (-<.> "html")

@@ -1,4 +1,9 @@
-module Item where
+module Item
+    ( Item(Item)
+    , itemDate
+    , itemValue
+    , recentFirst
+    ) where
 
 import Data.Dates (DateTime)
 import Data.List  (sortBy)

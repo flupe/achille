@@ -3,7 +3,26 @@
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE LambdaCase           #-}
 
-module Recipe where
+module Recipe
+    ( Recipe(Recipe)
+    , getInput
+    , liftIO
+    , read
+    , save
+    , saveTo
+    , copy
+    , copyTo
+    , readPandoc
+    , readPandocWith
+    , readImage
+    , write
+    , debug
+    , renderPandoc
+    , renderPandocWith
+    , compilePandoc
+    , toItem
+    , (<?>)
+    ) where
 
 import Prelude hiding (read)
 
@@ -25,7 +44,8 @@ import qualified Text.Blaze.Html.Renderer.Utf8 (renderHtmlToByteStringIO)
 
 
 import Config
-import Writable
+import Writable (Writable)
+import qualified Writable
 import Item
 
 
@@ -146,8 +166,6 @@ toItem x = liftIO $ case parseDateFormat "YYYY-MM-DD" (takeFileName x) of
 -- | Helper to log a message when a recipe is ran
 (<?>) :: Recipe a b -> String -> Recipe a b
 r <?> msg = liftIO (putStrLn msg) >> r
-
-
 
 
 -- I know, this has nothing to do here
