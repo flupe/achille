@@ -10,12 +10,14 @@ import System.Directory     (removePathForcibly)
 import Codec.Picture        (dynamicPixelMap)
 import Codec.Picture.Extra  (scaleBilinear)
 import Data.Functor         ((<&>))
-import Control.Monad        (void)
+import Control.Monad        (void, mapM)
 import Data.Function        ((&))
+import Data.List            (sort)
 
 import Templates
 import Recipe
 import Config
+import Item
 
 
 (+<.>) :: FilePath -> String -> FilePath
@@ -55,13 +57,20 @@ runCommand Build = do
 
     with "assets/theme.css" copy
 
-    match "visual/*/*.png" copy
+    pictures <- match "visual/*/*" $
+        copy <?> "saving image"
+
         -- readImage
         --     <&> scaleBilinear 40 40
         --     >>= saveTo (+<.> "thumb")
 
+    with "visual.rst" $ do
+        txt    <- compilePandoc
+        images <- recentFirst <$> mapM toItem pictures
+        write "visual.html" $ renderVisual txt images
+
     posts <- match "posts/*" do
-        src <- copy
+        src <- copy <?> "copying raw post"
         compilePandoc
             <&> renderPost src
             >>= saveTo (-<.> "html")

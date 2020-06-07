@@ -10,6 +10,7 @@ executable site
                   , Config
                   , Writable
                   , Recipe
+                  , Item
   build-depends:    base == 4.*
                   , optparse-applicative
                   , pandoc
@@ -25,5 +26,6 @@ executable site
                   , process
                   , JuicyPixels
                   , JuicyPixels-extra
+                  , dates
   ghc-options:      -threaded
   default-language: Haskell2010
