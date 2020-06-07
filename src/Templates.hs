@@ -17,6 +17,7 @@ renderIndex :: [FilePath] -> Html -> Html
 renderIndex posts content = 
     outer do
         content
+        H.h2 "Latest notes"
         H.ul $ forM_ posts (H.li . (`toLink` "post"))
 
 renderPost :: FilePath -> Html -> Html

@@ -92,18 +92,22 @@ copyTo :: (FilePath -> FilePath) -> Recipe FilePath FilePath
 copyTo mod = Recipe \p -> safeCopyFile (contentDir </> p) (outputDir </> mod p)
                        >> pure (mod p)
 
-
+-- | Recipe for loading a pandoc document
 readPandoc :: Recipe FilePath Pandoc
-readPandoc = Recipe \p ->
+readPandoc = readPandocWith def
+
+-- | Recipe for loading a pandoc document using a given reader config
+readPandocWith :: ReaderOptions -> Recipe FilePath Pandoc
+readPandocWith ropts = Recipe \p ->
     let ext = drop 1 $ takeExtension p
         Just reader = lookup (pack ext) readers
     in case reader of
         ByteStringReader f ->
             ByteString.readFile (contentDir </> p)
-            >>= runIOorExplode <$> f def
+            >>= runIOorExplode <$> f ropts
         TextReader f ->
             Text.readFile (contentDir </> p)
-            >>= runIOorExplode <$> f def
+            >>= runIOorExplode <$> f ropts
 
 -- | Recipe for loading an image using the input path
 readImage :: Recipe FilePath (Image PixelRGB8)
@@ -126,11 +130,14 @@ debug = liftIO . print
 
 
 -- | Recipe to convert a Pandoc document to Html
-pandocToHtml :: Pandoc -> Recipe a Html
-pandocToHtml = liftIO . runIOorExplode <$> writeHtml5 def
+renderPandoc :: Pandoc -> Recipe a Html
+renderPandoc = renderPandocWith def 
+
+renderPandocWith :: WriterOptions -> Pandoc -> Recipe a Html
+renderPandocWith wopts = liftIO . runIOorExplode <$> writeHtml5 wopts
 
 compilePandoc :: Recipe FilePath Html
-compilePandoc = readPandoc >>= pandocToHtml
+compilePandoc = readPandoc >>= renderPandoc
 
 toItem :: FilePath -> Recipe a (Item FilePath)
 toItem x = liftIO $ case parseDateFormat "YYYY-MM-DD" (takeFileName x) of
@@ -145,13 +152,10 @@ r <?> msg = liftIO (putStrLn msg) >> r
 -- Recipe runners
 ------------------------------
 
--- In the future(?) they will be tasks that take care of incremental builds
-
 -- | Apply a recipe for every filepath matching the glob pattern
 match :: Glob.Pattern -> Recipe FilePath b -> IO [b]
 match pattern (Recipe r) =
-    withCurrentDirectory contentDir
-        (Glob.globDir1 pattern "")
+    withCurrentDirectory contentDir (Glob.globDir1 pattern "")
     >>= mapM r
 
 -- | Apply a recipe for a given input value

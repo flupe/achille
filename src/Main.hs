@@ -13,12 +13,17 @@ import Data.Functor         ((<&>))
 import Control.Monad        (void, mapM)
 import Data.Function        ((&))
 import Data.List            (sort)
+import Text.Pandoc.Options
 
 import Templates
-import Recipe
+import Recipe hiding (compilePandoc)
 import Config
 import Item
 
+compilePandoc = readPandoc >>= renderPandocWith wopts
+    where wopts = def
+            { writerHTMLMathMethod = KaTeX ""
+            }
 
 (+<.>) :: FilePath -> String -> FilePath
 p +<.> e = let (n, es) = splitExtensions p in (addExtension n e) <> es
@@ -59,7 +64,6 @@ runCommand Build = do
 
     pictures <- match "visual/*/*" $
         copy <?> "saving image"
-
         -- readImage
         --     <&> scaleBilinear 40 40
         --     >>= saveTo (+<.> "thumb")
