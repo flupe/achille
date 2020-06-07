@@ -10,10 +10,13 @@ import System.Directory     (removePathForcibly)
 import Codec.Picture        (dynamicPixelMap)
 import Codec.Picture.Extra  (scaleBilinear)
 import Data.Functor         ((<&>))
+import Control.Monad        (void)
+import Data.Function        ((&))
 
 import Templates
 import Recipe
 import Config
+
 
 (+<.>) :: FilePath -> String -> FilePath
 p +<.> e = let (n, es) = splitExtensions p in (addExtension n e) <> es
@@ -33,7 +36,7 @@ cli :: Parser Command
 cli = subparser $
       command "build"  (info (pure Build)  (progDesc "Build the site once"))
    <> command "deploy" (info (pure Deploy) (progDesc "Server go brrr"))
-   <> command "Clean"  (info (pure Clean)  (progDesc "Delete all artefacts"))
+   <> command "clean"  (info (pure Clean)  (progDesc "Delete all artefacts"))
 
 
 main :: IO ()
@@ -48,15 +51,25 @@ runCommand Deploy = callCommand deployCmd
 runCommand Clean  = removePathForcibly outputDir
 
 runCommand Build = do
-    putStrLn "starting..."
+    putStrLn "building site..."
 
-    match "posts/*" $ getInput >>= debug
+    with "assets/theme.css" copy
 
-    match "visual/*/*" do
-        copy -- we copy the actual image first
+    match "visual/*/*.png" copy
+        -- readImage
+        --     <&> scaleBilinear 40 40
+        --     >>= saveTo (+<.> "thumb")
 
-        readImage
-            <&> scaleBilinear 40 40
-            >>= saveTo (+<.> "thumb")
+    posts <- match "posts/*" do
+        src <- copy
+        compilePandoc
+            <&> renderPost src
+            >>= saveTo (-<.> "html")
 
-    with "index.rst" $ compilePandoc >>= saveTo (-<.> "html")
+    with "index.rst" $
+        compilePandoc
+            <&> renderIndex posts
+            >>= saveTo (-<.> "html")
+
+    with "quid.rst" $ void $
+        compilePandoc <&> outer >>= saveTo (-<.> "html")

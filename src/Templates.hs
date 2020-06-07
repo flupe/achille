@@ -1,34 +1,43 @@
-{-# LANGUAGE OverloadedStrings, BlockArguments #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BlockArguments    #-}
+
 module Templates where
 
--- outer :: Html () -> Html ()
--- outer body =
---     doctypehtml_ do
---         head_ do
---             meta_ [charset_ "utf-8"]
---             meta_ [name_ "viewport", content_ "width=device-width, initial-scale=1.0, user-scalable=yes"]
--- 
---             meta_ [name_ "theme-color", content_ "#000000"]
---             meta_ [name_ "robots", content_ "index, follow"]
---             meta_ [httpEquiv_ "x-ua-compatible", content_ "ie=edge"]
--- 
---             title_ "SBBLS"
--- 
---             link_ [rel_ "stylesheet", href_ "/assets/theme.css"]
---             meta_ [name_ "author", content_ "flupe"]
--- 
--- 
---         body_ do
---             header_ [id_ "hd"] do
---               section_ do
---                 nav_ do
---                   a_ [href_ "/quid.html", title_ "Quid"] "Quid"
--- 
---             main_ [role_ "main"] body
--- 
---             footer_ [id_ "ft"] do
---               "flupe 2020 · "
---               a_ [href_ "https://creativecommons.org/licenses/by-nc/2.0/"] "CC BY-NC 2.0"
---               " · "
---               a_ [href_ "https://instagram.com/ba.bou.m/"] "instagram"
--- 
+import Data.String (fromString)
+import Control.Monad (forM_)
+import Text.Blaze.Html5            as H
+import Text.Blaze.Html5.Attributes as A
+
+toLink :: FilePath -> Html -> Html
+toLink url = H.a ! A.href (fromString $ "/" <> url)
+
+renderIndex :: [FilePath] -> Html -> Html
+renderIndex posts content = 
+    outer do
+        content
+        H.ul $ forM_ posts (H.li . (`toLink` "post"))
+
+renderPost :: FilePath -> Html -> Html
+renderPost source content =
+    outer do
+        toLink source "View source"
+        content
+
+outer :: Html -> Html
+outer content = H.docTypeHtml do
+    H.head do
+        H.meta ! charset "utf-8"
+        H.link ! A.rel "stylesheet" ! A.href "/assets/theme.css"
+        H.title "sbbls"
+
+    H.body do
+        H.header ! A.id "hd" $ do
+            H.section $ H.nav $ H.a ! A.href "/quid.html" $ "Quid"
+
+        H.main content
+
+        H.footer ! A.id "ft" $ do
+            "flupe 2020 · "
+            H.a ! A.href "https://creativecommons.org/licenses/by-nc/2.0/" $ "CC BY-NC 2.0"
+            " · "
+            H.a ! A.href "https://instagram.com/ba.bou.m/" $ "instagram"

@@ -9,13 +9,12 @@ import Prelude hiding (read)
 
 import Data.Binary      (Binary, encodeFile)
 import System.FilePath
-import System.Directory (copyFile, createDirectoryIfMissing)
+import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirectory)
 import Data.Text        (Text, pack)
 import Text.Pandoc
 import Text.Blaze.Html  (Html)
 import System.FilePath.Glob.Primitive (literal)
 import Codec.Picture (Image, DynamicImage(..), PixelRGB8, convertRGB8)
-
 
 import qualified Data.Text.IO                    as Text
 import qualified System.FilePath.Glob            as Glob
@@ -45,6 +44,13 @@ instance Monad (Recipe a) where
         \a -> (x a >>= \x -> unRecipe (f x) a)
 
 
+ensureDirExists :: FilePath -> IO ()
+ensureDirExists = createDirectoryIfMissing True . takeDirectory
+
+safeCopyFile :: FilePath -> FilePath -> IO ()
+safeCopyFile from to = ensureDirExists to >> copyFile from to
+
+
 ------------------------------
 -- Recipe building blocks
 ------------------------------
@@ -59,32 +65,30 @@ liftIO x = Recipe (const x)
 
 -- | Recipe for retrieving the text of the input file
 read :: Recipe FilePath Text
-read = Recipe Text.readFile
-
-ensureDirExists :: FilePath -> IO ()
-ensureDirExists = createDirectoryIfMissing True . takeDirectory
-
-safeCopyFile :: FilePath -> FilePath -> IO ()
-safeCopyFile from to = ensureDirExists to >> copyFile from to
+read = Recipe (Text.readFile . (contentDir </>))
 
 -- | Recipe for saving the current value to the same location as the input file
-save :: Writable a => a -> Recipe FilePath ()
+save :: Writable a => a -> Recipe FilePath FilePath
 save = saveTo id
 
 -- | Recipe for saving the current value to the output dir,
 --   using the path modifier
-saveTo :: Writable a => (FilePath -> FilePath) -> a -> Recipe FilePath ()
-saveTo mod x = Recipe \p -> let p' = outputDir </> mod p
-                            in ensureDirExists p' >> Writable.write p' x
+saveTo :: Writable a => (FilePath -> FilePath) -> a -> Recipe FilePath FilePath
+saveTo mod x = Recipe \p -> do
+    let p' = outputDir </> mod p
+    ensureDirExists p'
+    Writable.write p' x
+    pure (mod p)
 
 -- | Recipe for copying an input file to the same location in the output dir
-copy :: Recipe FilePath ()
+copy :: Recipe FilePath FilePath
 copy = copyTo id
 
 -- | Recipe for copying an input file in the output dir,
 --   using the path modifier
-copyTo :: (FilePath -> FilePath) -> Recipe FilePath ()
-copyTo mod = Recipe \p -> safeCopyFile p (outputDir </> mod p)
+copyTo :: (FilePath -> FilePath) -> Recipe FilePath FilePath
+copyTo mod = Recipe \p -> safeCopyFile (contentDir </> p) (outputDir </> mod p)
+                       >> pure (mod p)
 
 
 readPandoc :: Recipe FilePath Pandoc
@@ -93,15 +97,15 @@ readPandoc = Recipe \p ->
         Just reader = lookup (pack ext) readers
     in case reader of
         ByteStringReader f ->
-            ByteString.readFile p
+            ByteString.readFile (contentDir </> p)
             >>= runIOorExplode <$> f def
         TextReader f ->
-            Text.readFile p
+            Text.readFile (contentDir </> p)
             >>= runIOorExplode <$> f def
 
 -- | Recipe for loading an image using the input path
 readImage :: Recipe FilePath (Image PixelRGB8)
-readImage = Recipe \p -> JuicyPixels.readImage p >>= \case
+readImage = Recipe \p -> JuicyPixels.readImage (contentDir </> p) >>= \case
     Left e    -> fail e
     Right img -> pure $ convertRGB8 img
 
@@ -112,7 +116,7 @@ readImage = Recipe \p -> JuicyPixels.readImage p >>= \case
 
 -- | Recipe for writing to a file
 write :: Writable b => FilePath -> b -> Recipe a ()
-write p x = liftIO $ ensureDirExists p >> Writable.write (outputDir </> p) x
+write p x = liftIO $ ensureDirExists (outputDir </> p) >> Writable.write (outputDir </> p) x
 
 -- | Recipe for printing a value to the console
 debug :: Show b => b -> Recipe a ()
@@ -131,11 +135,14 @@ compilePandoc = readPandoc >>= pandocToHtml
 -- Recipe runners
 ------------------------------
 
--- In the future(?) this will be tasks that take care of incremental builds
+-- In the future(?) they will be tasks that take care of incremental builds
 
 -- | Apply a recipe for every filepath matching the glob pattern
 match :: Glob.Pattern -> Recipe FilePath b -> IO [b]
-match pattern (Recipe r) = Glob.globDir1 pattern contentDir >>= mapM r
+match pattern (Recipe r) =
+    withCurrentDirectory contentDir
+        (Glob.globDir1 pattern "")
+    >>= mapM r
 
 -- | Apply a recipe for a given input value
 with :: a -> Recipe a b -> IO b
