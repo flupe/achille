@@ -10,6 +10,7 @@ executable site
                   , Config
                   , Writable
                   , Recipe
+                  , Task
                   , Item
   build-depends:    base == 4.*
                   , optparse-applicative

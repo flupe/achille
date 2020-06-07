@@ -18,6 +18,7 @@ import Text.Pandoc.Options
 import Templates
 import Recipe hiding (compilePandoc)
 import Config
+import Task
 import Item
 
 compilePandoc = readPandoc >>= renderPandocWith wopts
@@ -56,10 +57,10 @@ main = customExecParser p opts >>= runCommand
 runCommand :: Command -> IO ()
 runCommand Deploy = callCommand deployCmd
 runCommand Clean  = removePathForcibly outputDir
+runCommand Build  = runTask build
 
-runCommand Build = do
-    putStrLn "building site..."
-
+build :: Task ()
+build = do
     with "assets/theme.css" copy
 
     pictures <- match "visual/*/*" $

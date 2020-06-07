@@ -13,7 +13,6 @@ import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirector
 import Data.Text        (Text, pack)
 import Text.Pandoc
 import Text.Blaze.Html  (Html)
-import System.FilePath.Glob.Primitive (literal)
 import Codec.Picture (Image, DynamicImage(..), PixelRGB8, convertRGB8)
 import Data.Dates.Formats (parseDateFormat)
 
@@ -148,23 +147,7 @@ toItem x = liftIO $ case parseDateFormat "YYYY-MM-DD" (takeFileName x) of
 (<?>) :: Recipe a b -> String -> Recipe a b
 r <?> msg = liftIO (putStrLn msg) >> r
 
-------------------------------
--- Recipe runners
-------------------------------
 
--- | Apply a recipe for every filepath matching the glob pattern
-match :: Glob.Pattern -> Recipe FilePath b -> IO [b]
-match pattern (Recipe r) =
-    withCurrentDirectory contentDir (Glob.globDir1 pattern "")
-    >>= mapM r
-
--- | Apply a recipe for a given input value
-with :: a -> Recipe a b -> IO b
-with a (Recipe r) = r a
-
--- | Apply a recipe expecting no input
-always :: Recipe () b -> IO b
-always = with ()
 
 
 -- I know, this has nothing to do here
