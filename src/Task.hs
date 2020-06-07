@@ -14,9 +14,11 @@ import Data.Functor    ((<&>))
 import Data.Typeable   (Typeable)
 import Data.Binary     (Binary, decodeFile, encodeFile)
 import Data.Dynamic.Binary
-import Control.Monad   (liftM, liftM2)
+import Control.Monad   (liftM, liftM2, forM)
 import Control.Applicative
 import Data.Maybe (fromMaybe)
+import Data.Time.Clock     (UTCTime)
+import Data.List (lookup)
 
 import qualified System.FilePath.Glob as Glob
 
@@ -33,29 +35,21 @@ data Task a where
     TaskBind   :: Task a -> (a -> Task b) -> Task b
 
 
--- | Run a task as is, no incremental builds
--- runTask :: Task a -> IO a
--- runTask (TaskMatch p (Recipe r)) = 
---     withCurrentDirectory contentDir (Glob.globDir1 p "")
---         >>= mapM r
--- runTask (TaskWith x (Recipe r)) = r x
--- runTask (TaskBind ta f) = runTask ta >>= runTask . f
--- runTask (TaskIO x) = x
-
-
 runTaskCached :: (Typeable a, Binary a) => Cache -> Task a -> IO (a, Cache)
 runTaskCached cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
     case fromCache cache :: Maybe (CacheMatch b) of
-      -- nothing is cached
       Nothing -> do
         paths  <- withCurrentDirectory contentDir (Glob.globDir1 p "")
         values <- mapM r paths
         return (values , toCache $ zip paths values)
-
-      -- some paths are in cache
       Just cached -> do
-        -- TODO: inspect changes
-        return (map snd cached, cache)
+        paths <- withCurrentDirectory contentDir (Glob.globDir1 p "")
+        cache' <- forM paths \p ->
+            case lookup p cached of
+                Just v  -> pure (p , v) -- TODO: check edit time
+                Nothing -> (p,) <$> r p 
+        return (map snd cache', toCache cache')
+
 
 runTaskCached cache (TaskWith (x :: b) (Recipe r :: Recipe b a)) =
     case fromCache cache :: Maybe (CacheWith b a) of
@@ -66,14 +60,14 @@ runTaskCached cache (TaskWith (x :: b) (Recipe r :: Recipe b a)) =
 
 runTaskCached cache (TaskIO x) = (,cache) <$> x
 
-runTaskCached cache (TaskBind t@(TaskMatch p (r :: Recipe FilePath a)) f) = do
+runTaskCached cache (TaskBind t@(TaskMatch _ _) f) = do
     let (tcache, fcache) = fromMaybe (emptyCache, emptyCache) $
                                fromCache cache
     (vt, tcache') <- runTaskCached tcache t
     (vf, fcache') <- runTaskCached fcache (f vt)
     return (vf , toCache (tcache', fcache'))
 
-runTaskCached cache (TaskBind t@(TaskWith (x :: b) (_ :: Recipe b a)) f) = do
+runTaskCached cache (TaskBind t@(TaskWith _ _) f) = do
     let (tcache, fcache) = fromMaybe (emptyCache, emptyCache) $
                                fromCache cache
     (vt, tcache') <- runTaskCached tcache t
@@ -84,7 +78,6 @@ runTaskCached cache (TaskBind t@(TaskIO x) f) = x >>= runTaskCached cache . f
 
 runTaskCached cache (TaskBind (TaskBind ta f) g) = 
     runTaskCached cache (TaskBind ta \a -> TaskBind (f a) g)
-
 
 
 -- | Main runner, takes care of loading and updating the cache

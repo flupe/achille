@@ -22,7 +22,7 @@ type Cache = Dynamic
 emptyCache :: Cache
 emptyCache = toDyn ()
 
-type CacheMatch b  = [(FilePath, b)]
+type CacheMatch b  = [(FilePath, (b))]
 type CacheWith a b = (a, b)
 
 
