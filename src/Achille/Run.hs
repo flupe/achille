@@ -75,13 +75,13 @@ runTaskCached ctx cache (TaskMatchVoid p (Recipe r)) =
     let cached = retrieveFromCache cache :: Maybe CacheMatchVoid
     in case discardWhenMust ctx cached of
       Nothing -> do
-        paths  <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
+        paths <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
         mapM (r . toRecipeContext ctx) paths >> return (() , asCache paths)
       Just paths' -> do
-        paths  <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
+        paths <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
         forM_ paths \p ->
             when (elem p paths') do
-                tfile  <- getModificationTime (inputDir ctx </> p)
+                tfile <- getModificationTime (inputDir ctx </> p)
                 when (timestamp ctx < tfile) (void $ r $ toRecipeContext ctx p)
         return ((), asCache $ paths)
 
@@ -119,7 +119,7 @@ runTaskCached ctx cache (TaskWatch (x :: b) (t :: Task a)) =
     in case discardWhenMust ctx cached of
         Nothing      -> runTaskCached ctx cache t
                           <&> \v -> (fst v, asCache (x, snd v))
-        Just (x', v) -> runTaskCached(ctx {mustRun = x /= x'}) cache t
+        Just (x', cache) -> runTaskCached(ctx {mustRun = x /= x'}) cache t
                           <&> \v -> (fst v, asCache (x, snd v))
 
 
