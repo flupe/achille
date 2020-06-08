@@ -9,7 +9,7 @@ It is very inspired by [Hakyll], but much smaller in scope.
   so you are free to retrieve resources however you please.
 - Intermediate values and dependencies are handled explicitly by the user,
   which allows for efficient fine-tuned incremental builds and a tiny persistent cache.
-- Because achille only cares about your intermediate values,
+- Because achille only cares about your intermediate values and not the file you output,
   producing multiple versions of a file is in turn much easier.
 
 While trying to stay minimal, achille still provides many utilities for common use cases.
@@ -24,19 +24,28 @@ Here is an example of how to use this library. This produces a CLI static site g
 
 ```haskell
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE BlockArguments    #-}
 
-import Data.Functor ((<&>))
+import Data.Functor    ((<&>))
 import System.FilePath ((-<.>))
 import Achille
-import Templates
+
+import Templates ( renderOuter
+                 , renderVisual
+                 , renderPost
+                 , renderIndex
+                 )
 
 main :: IO ()
 main = achille do
     match_ "assets/theme.css" copy
-    match_ "./quid.rst" $ compilePandoc <&> outer >>= saveTo (-<.> "html")
 
-    pictures <- match "visual/*/*" do
+    match_ "./quid.rst" $
+        compilePandoc
+            <&> renderOuter
+            >>= saveTo (-<.> "html")
+
+    pictures <- match "visual/*" do
         copy
         readImage
             <&> downscaleToFit (FitWidth 740)
@@ -44,8 +53,9 @@ main = achille do
             <&> timestampedWith (timestamp . thumbPath)
 
     with pictures $ match_ "./visual.rst" do
-        txt    <- compilePandoc
-        write "visual.html" $ renderVisual txt (recentFirst pictures)
+        content <- compilePandoc
+        write "visual.html" $
+            renderVisual content (recentFirst pictures)
 
     posts <- match "posts/*" do
         src <- copy
