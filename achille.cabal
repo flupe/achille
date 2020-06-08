@@ -41,6 +41,8 @@ library
                    , bytestring
                    , text
                    , dates
+                   , time
+                   , data-default
                    , optparse-applicative
 
   if flag(pandoc)

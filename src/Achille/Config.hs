@@ -1,20 +1,25 @@
 module Achille.Config
-    ( contentDir
-    , outputDir
-    , cacheFile
-    , deployCmd
+    ( Config (..)
+    , def
     ) where
 
+
 import System.FilePath (FilePath)
+import Data.Default    (Default, def)
 
-contentDir :: FilePath
-contentDir = "content"
 
-outputDir :: FilePath
-outputDir = "_site"
+data Config = Config
+    { contentDir :: FilePath
+    , outputDir  :: FilePath
+    , cacheFile  :: FilePath
+    , deployCmd  :: Maybe String
+    }
 
-cacheFile :: FilePath
-cacheFile = ".cache"
 
-deployCmd :: String
-deployCmd = "rsync -avzzr --chmod=755 _site/ flupe@duckduck:/var/www/acatalepsie"
+instance Default Config where
+    def = Config
+        { contentDir = "content"
+        , outputDir  = "_site"
+        , cacheFile  = ".cache"
+        , deployCmd  = Nothing
+        }

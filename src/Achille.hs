@@ -10,7 +10,7 @@ module Achille
     ) where
 
 
-import Control.Monad        (void)
+import Control.Monad        (void, mapM_)
 import System.Directory     (removePathForcibly)
 import System.Process       (callCommand)
 import Options.Applicative
@@ -18,9 +18,9 @@ import Options.Applicative
 import Achille.Config
 import Achille.Timestamped
 import Achille.Thumbnail
-import Achille.Recipe
+import Achille.Recipe hiding (Context)
 import Achille.Task
-import Achille.Run
+import Achille.Run    hiding (Context)
 
 
 data Command
@@ -39,11 +39,16 @@ cli = subparser $
 
 -- | CLI interface for running a task
 achille :: Task a -> IO ()
-achille task = customExecParser p opts >>= \case
-    Deploy -> callCommand deployCmd
-    Clean  -> removePathForcibly outputDir
-           >> removePathForcibly cacheFile
-    Build  -> void $ run task
+achille = achilleWith def
+
+
+-- | CLI interface for running a task using given options
+achilleWith :: Config -> Task a -> IO ()
+achilleWith config task = customExecParser p opts >>= \case
+    Deploy -> mapM_ callCommand  (deployCmd config)
+    Clean  -> removePathForcibly (outputDir config)
+           >> removePathForcibly (cacheFile config)
+    Build  -> void $ run config task
     where
         opts = info (cli <**> helper) $ fullDesc <> header desc
         p    = prefs showHelpOnEmpty
