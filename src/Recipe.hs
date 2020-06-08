@@ -20,7 +20,7 @@ module Recipe
     , renderPandoc
     , renderPandocWith
     , compilePandoc
-    , toItem
+    , toTimestamped
     , (<?>)
     ) where
 
@@ -33,7 +33,6 @@ import Data.Text        (Text, pack)
 import Text.Pandoc
 import Text.Blaze.Html  (Html)
 import Codec.Picture (Image, DynamicImage(..), PixelRGB8, convertRGB8)
-import Data.Dates.Formats (parseDateFormat)
 
 import qualified Data.Text.IO                    as Text
 import qualified System.FilePath.Glob            as Glob
@@ -46,7 +45,7 @@ import qualified Text.Blaze.Html.Renderer.Utf8 (renderHtmlToByteStringIO)
 import Config
 import Writable (Writable)
 import qualified Writable
-import Item
+import Timestamped
 
 
 -- | type of recipe for cooking some b given an input a
@@ -158,10 +157,8 @@ renderPandocWith wopts = liftIO . runIOorExplode <$> writeHtml5 wopts
 compilePandoc :: Recipe FilePath Html
 compilePandoc = readPandoc >>= renderPandoc
 
-toItem :: FilePath -> Recipe a (Item FilePath)
-toItem x = liftIO $ case parseDateFormat "YYYY-MM-DD" (takeFileName x) of
-    Left  e -> fail $ "Unable to read date from " <> x
-    Right d -> pure $ Item d x
+toTimestamped :: FilePath -> Recipe a (Timestamped FilePath)
+toTimestamped = liftIO . pure . timestamped
 
 -- | Helper to log a message when a recipe is ran
 (<?>) :: Recipe a b -> String -> Recipe a b

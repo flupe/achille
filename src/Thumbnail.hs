@@ -20,7 +20,7 @@ data Thumbnail = Thumbnail
     { thumbWidth  :: Int
     , thumbHeight :: Int
     , thumbPath   :: FilePath
-    } deriving (Eq, Typeable)
+    } deriving (Eq, Ord, Typeable)
 
 instance Binary Thumbnail where
     put (Thumbnail w h p) = put w >> put h >> put p

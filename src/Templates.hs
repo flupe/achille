@@ -10,7 +10,7 @@ import Text.Blaze.Internal         as I
 import Text.Blaze.Html5            as H
 import Text.Blaze.Html5.Attributes as A
 
-import Item
+import Timestamped
 import Thumbnail
 
 loading :: AttributeValue -> Attribute
@@ -32,12 +32,12 @@ renderPost source content =
         toLink source "View source"
         content
 
-renderVisual :: Html -> [Thumbnail] -> Html
+renderVisual :: Html -> [Timestamped Thumbnail] -> Html
 renderVisual txt imgs =
     outer do
         txt
         H.hr
-        H.section $ forM_ imgs \p ->
+        H.section $ forM_ imgs \ (Timestamped _ p) ->
             H.figure $ H.img ! A.src    (fromString $ thumbPath p)
                              ! A.width  (fromString . show $ thumbWidth p)
                              ! A.height (fromString . show $ thumbHeight p)

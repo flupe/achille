@@ -21,7 +21,7 @@ import Templates
 import Recipe hiding (compilePandoc)
 import Config
 import Task
-import Item
+import Timestamped
 import Thumbnail
 
 
@@ -76,10 +76,11 @@ build = do
         readImage
             <&> downscaleToFit (FitWidth 740)
             >>= saveThumbnailTo (+<.> "thumb")
+            <&> timestampedWith (timestamp . thumbPath)
 
     with pictures $ match "./visual.rst" $ void do
         txt    <- compilePandoc
-        write "visual.html" $ renderVisual txt pictures
+        write "visual.html" $ renderVisual txt (recentFirst pictures)
 
     posts <- match "posts/*" do
         src <- copy

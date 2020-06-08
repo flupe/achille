@@ -13,7 +13,7 @@ executable site
                   , Cache
                   , Task
                   , Thumbnail
-                  , Item
+                  , Timestamped
   build-depends:    base == 4.*
                   , optparse-applicative
                   , pandoc
