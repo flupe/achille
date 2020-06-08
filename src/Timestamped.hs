@@ -4,15 +4,14 @@
 
 module Timestamped where
 
-import Data.Ord
-import System.FilePath (FilePath)
-import Data.Dates (DateTime(..))
-import Data.List  (sortBy, sort)
-import Data.Typeable (Typeable)
-import Data.Binary (Binary, put, get)
-import Data.Time.Clock
+import Data.Ord           (Ord, compare, Ordering)
+import System.FilePath    (FilePath)
+import Data.Dates         (DateTime(..))
+import Data.List          (sortBy, sort)
+import Data.Typeable      (Typeable)
+import Data.Binary        (Binary, put, get)
 import Data.Dates.Formats (parseDateFormat)
-import System.FilePath (takeFileName)
+import System.FilePath    (takeFileName)
 
 -- | Container for timestamping data
 data Timestamped a = Timestamped DateTime a
@@ -38,6 +37,7 @@ instance IsTimestamped (Timestamped a) where
 instance IsTimestamped FilePath where
     timestamp p = case parseDateFormat "YYYY-MM-DD" (takeFileName p) of
       Right d -> d
+      Left _  -> mempty
 
 
 timestamped :: IsTimestamped a => a -> Timestamped a
@@ -46,8 +46,11 @@ timestamped x = Timestamped (timestamp x) x
 timestampedWith :: (a -> DateTime) -> a -> Timestamped a
 timestampedWith f x = Timestamped (f x) x
 
-recentFirst :: (Eq a, Ord a) => [Timestamped a] -> [Timestamped a]
-recentFirst = sortBy (flip compare)
+compareTimestamp :: IsTimestamped a => a -> a -> Ordering
+compareTimestamp x y = compare (timestamp x) (timestamp y)
 
-oldFirst :: (Eq a, Ord a) => [Timestamped a] -> [Timestamped a]
-oldFirst = sort
+recentFirst :: IsTimestamped a => [a] -> [a]
+recentFirst = sortBy (flip compareTimestamp)
+
+oldFirst :: IsTimestamped a => [a] -> [a]
+oldFirst = sortBy compareTimestamp

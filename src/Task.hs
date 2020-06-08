@@ -17,7 +17,6 @@ import Control.Applicative
 import Data.List             (lookup)
 import Data.Either           (fromRight)
 import Data.Maybe            (fromMaybe)
-import Data.Time.Clock       (UTCTime)
 
 import Data.Binary           (Binary, get, put)
 import Data.ByteString.Lazy  (ByteString)
