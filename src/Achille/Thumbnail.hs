@@ -1,15 +1,20 @@
-{-# LANGUAGE BlockArguments   #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RecordWildCards #-}
 
-module Thumbnail where
+module Achille.Thumbnail
+    ( FitType(..)
+    , Thumbnail
+    , saveThumbnailTo
+    , downscaleToFit
+    ) where
 
-import Data.Typeable
-import Data.Binary
+
+import Data.Binary         (Binary, put, get)
 import Codec.Picture
 import Codec.Picture.Extra (scaleBilinear)
-import Control.Monad.ST
-import Recipe
+
+import Achille.Recipe
+
 
 data FitType
     = FitWidth  Int
@@ -20,7 +25,7 @@ data Thumbnail = Thumbnail
     { thumbWidth  :: Int
     , thumbHeight :: Int
     , thumbPath   :: FilePath
-    } deriving (Eq, Ord, Typeable)
+    } deriving (Eq, Ord)
 
 instance Binary Thumbnail where
     put (Thumbnail w h p) = put w >> put h >> put p
@@ -33,6 +38,7 @@ saveThumbnailTo :: PngSavable pixel
                 -> Recipe FilePath Thumbnail
 saveThumbnailTo mod img@Image{..} =
     Thumbnail imageWidth imageHeight <$> saveTo mod img
+
 
 downscaleToFit :: ( Pixel a
                   , Bounded  (PixelBaseComponent a)
@@ -51,5 +57,3 @@ downscaleToFit fit img@(Image{..}) =
                 (round $ (fi width) * (fi hbound) / (fi height), hbound)
     in scaleBilinear width' height' img
     where fi = fromIntegral
-
-{-# INLINE downscaleToFit #-}

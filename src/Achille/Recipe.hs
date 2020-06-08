@@ -1,9 +1,4 @@
-{-# LANGUAGE BlockArguments       #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances    #-}
-{-# LANGUAGE LambdaCase           #-}
-
-module Recipe
+module Achille.Recipe
     ( Recipe(Recipe)
     , getInput
     , liftIO
@@ -21,7 +16,6 @@ module Recipe
     , renderPandocWith
     , compilePandoc
     , toTimestamped
-    , (<?>)
     ) where
 
 import Prelude hiding (read)
@@ -41,11 +35,10 @@ import qualified Codec.Picture                   as JuicyPixels
 import qualified Text.Blaze.Html.Renderer.String as BlazeString
 import qualified Text.Blaze.Html.Renderer.Utf8 (renderHtmlToByteStringIO)
 
-
-import Config
-import Writable (Writable)
-import qualified Writable
-import Timestamped
+import Achille.Config
+import Achille.Writable (Writable)
+import qualified Achille.Writable as Writable
+import Achille.Timestamped
 
 
 -- | type of recipe for cooking some b given an input a
@@ -134,9 +127,9 @@ readImage = Recipe \p -> JuicyPixels.readImage (contentDir </> p) >>= \case
     Right img -> pure $ convertRGB8 img
 
 
---------------------------
+------------------------------
 -- Lifted IO
-
+------------------------------
 
 -- | Recipe for writing to a file
 write :: Writable b => FilePath -> b -> Recipe a ()
@@ -159,12 +152,3 @@ compilePandoc = readPandoc >>= renderPandoc
 
 toTimestamped :: FilePath -> Recipe a (Timestamped FilePath)
 toTimestamped = liftIO . pure . timestamped
-
--- | Helper to log a message when a recipe is ran
-(<?>) :: Recipe a b -> String -> Recipe a b
-r <?> msg = liftIO (putStrLn msg) >> r
-
-
--- I know, this has nothing to do here
-instance Show Html where
-    show = BlazeString.renderHtml

@@ -1,4 +1,4 @@
-module Config
+module Achille.Config
     ( contentDir
     , outputDir
     , cacheFile

@@ -2,7 +2,16 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances    #-}
 
-module Timestamped where
+module Achille.Timestamped
+    ( Timestamped
+    , IsTimestamped
+    , timestamp
+    , timestamped
+    , timestampedWith
+    , compareTimestamped
+    , recentFirst
+    , oldFirst
+    ) where
 
 import Data.Ord           (Ord, compare, Ordering)
 import System.FilePath    (FilePath)
@@ -16,6 +25,7 @@ import System.FilePath    (takeFileName)
 -- | Container for timestamping data
 data Timestamped a = Timestamped DateTime a
     deriving (Show, Eq, Ord, Typeable, Functor)
+
 
 instance Binary DateTime where
     put (DateTime y m d hr mi sc) = put y  >> put m  >> put d
@@ -46,11 +56,11 @@ timestamped x = Timestamped (timestamp x) x
 timestampedWith :: (a -> DateTime) -> a -> Timestamped a
 timestampedWith f x = Timestamped (f x) x
 
-compareTimestamp :: IsTimestamped a => a -> a -> Ordering
-compareTimestamp x y = compare (timestamp x) (timestamp y)
+compareTimestamped :: IsTimestamped a => a -> a -> Ordering
+compareTimestamped x y = compare (timestamp x) (timestamp y)
 
 recentFirst :: IsTimestamped a => [a] -> [a]
-recentFirst = sortBy (flip compareTimestamp)
+recentFirst = sortBy (flip compareTimestamped)
 
 oldFirst :: IsTimestamped a => [a] -> [a]
-oldFirst = sortBy compareTimestamp
+oldFirst = sortBy compareTimestamped
