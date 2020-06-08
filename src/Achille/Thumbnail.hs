@@ -3,7 +3,7 @@
 
 module Achille.Thumbnail
     ( FitType(..)
-    , Thumbnail
+    , Thumbnail(..)
     , saveThumbnailTo
     , downscaleToFit
     ) where

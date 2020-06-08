@@ -1,6 +1,7 @@
 module Achille
     ( module Achille.Config
     , module Achille.Timestamped
+    , module Achille.Thumbnail
     , module Achille.Recipe
     , module Achille.Task
     , module Achille.Run
@@ -16,6 +17,7 @@ import Options.Applicative
 
 import Achille.Config
 import Achille.Timestamped
+import Achille.Thumbnail
 import Achille.Recipe
 import Achille.Task
 import Achille.Run

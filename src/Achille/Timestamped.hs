@@ -3,7 +3,7 @@
 {-# LANGUAGE FlexibleInstances    #-}
 
 module Achille.Timestamped
-    ( Timestamped
+    ( Timestamped(..)
     , IsTimestamped
     , timestamp
     , timestamped

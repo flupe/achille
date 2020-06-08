@@ -1,6 +1,11 @@
 {-# LANGUAGE GADTs #-}
 
-module Achille.Task where
+module Achille.Task
+    ( Task(..)
+    , match
+    , match_
+    , with
+    ) where
 
 
 import Control.Applicative   (liftA2)
