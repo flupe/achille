@@ -22,6 +22,7 @@ import Recipe hiding (compilePandoc)
 import Config
 import Task
 import Item
+import Thumbnail
 
 
 compilePandoc = readPandoc >>= renderPandocWith wopts
@@ -73,13 +74,12 @@ build = do
     pictures <- match "visual/*/*" do
         copy
         readImage
-            <&> scaleBilinear 300 300
-            >>= saveTo (+<.> "thumb")
+            <&> downscaleToFit (FitWidth 740)
+            >>= saveThumbnailTo (+<.> "thumb")
 
     with pictures $ match "./visual.rst" $ void do
         txt    <- compilePandoc
-        images <- recentFirst <$> mapM toItem pictures
-        write "visual.html" $ renderVisual txt images
+        write "visual.html" $ renderVisual txt pictures
 
     posts <- match "posts/*" do
         src <- copy

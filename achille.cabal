@@ -12,6 +12,7 @@ executable site
                   , Recipe
                   , Cache
                   , Task
+                  , Thumbnail
                   , Item
   build-depends:    base == 4.*
                   , optparse-applicative
@@ -20,10 +21,11 @@ executable site
                   , text
                   , filepath
                   , Glob
+                  , directory
                   , binary
                   , bytestring
-                  , directory
                   , blaze-html
+                  , blaze-markup
                   , process
                   , JuicyPixels
                   , JuicyPixels-extra
