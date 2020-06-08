@@ -5,6 +5,7 @@ module Achille.Task
     , match
     , match_
     , with
+    , watch
     ) where
 
 
@@ -22,9 +23,10 @@ import Achille.Config
 data Task a where
     TaskMatchVoid :: Pattern -> Recipe FilePath a -> Task ()
     TaskMatch     :: Binary a => Pattern -> Recipe FilePath a -> Task [a]
-    TaskWith      :: (Binary a, Eq a, Binary b) => a -> Task b     -> Task b
-    TaskIO        :: IO a -> Task a
+    TaskWith      :: (Binary a, Eq a, Binary b) => a -> Task b -> Task b
+    TaskRecipe    :: Recipe () a -> Task a
     TaskBind      :: Task a -> (a -> Task b) -> Task b
+    TaskWatch     :: (Binary a, Eq a) => a -> Task b -> Task b
 
 
 instance Functor Task where
@@ -35,9 +37,11 @@ instance Applicative Task where
     liftA2 = liftM2
 
 instance Monad Task where
-    return = TaskIO . pure
+    return = TaskRecipe . liftIO . pure
     (>>=)  = TaskBind
 
+always :: Recipe () a -> Task a
+always = TaskRecipe
 
 match :: Binary a => Pattern -> Recipe FilePath a -> Task [a]
 match = TaskMatch
@@ -47,3 +51,6 @@ match_ = TaskMatchVoid
 
 with :: (Binary a, Eq a, Binary b) => a -> Task b -> Task b
 with = TaskWith
+
+watch :: (Binary a, Eq a) => a -> Task b -> Task b
+watch = TaskWatch

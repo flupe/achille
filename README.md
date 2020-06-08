@@ -1,6 +1,6 @@
 ## achille
 
-achille is an Haskell library for building static site generators.
+**achille** is a Haskell library for building static site generators.
 It is very inspired by [Hakyll], but much smaller in scope.
 
 [Hakyll]: https://jaspervdj.be/hakyll/
@@ -52,7 +52,7 @@ main = achille do
             >>= saveThumbnailTo (-<.> "thumb.png")
             <&> timestampedWith (timestamp . thumbPath)
 
-    with pictures $ match_ "./visual.rst" do
+    watch pictures $ match_ "./visual.rst" do
         content <- compilePandoc
         write "visual.html" $
             renderVisual content (recentFirst pictures)
@@ -63,7 +63,7 @@ main = achille do
             <&> renderPost src
             >>= saveTo (-<.> "html")
 
-    with posts $ match_ "./index.rst" do
+    watch posts $ match_ "./index.rst" do
         compilePandoc
             <&> renderIndex posts
             >>= saveTo (-<.> "html")

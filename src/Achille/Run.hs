@@ -41,6 +41,7 @@ emptyCache = ByteString.empty
 type CacheMatchVoid = [FilePath]
 type CacheMatch b   = [(FilePath, b)]
 type CacheWith a b  = (a, (b, Cache))
+type CacheWatch a b  = (a, Cache)
 
 
 -- | Try to load a value from the cache
@@ -59,16 +60,20 @@ data Context = Context
     { inputDir   :: FilePath   -- ^ Current input directory
     , outputDir  :: FilePath   -- ^ Current output directory
     , timestamp  :: UTCTime    -- ^ Timestamp of the last run
+    , mustRun    :: Bool
     }
 
 
 toRecipeContext :: Context -> a -> Recipe.Context a
-toRecipeContext (Context i o _) x = Recipe.Context i o x
+toRecipeContext (Context i o _ _) x = Recipe.Context i o x
 
+discardWhenMust :: Context -> Maybe a -> Maybe a
+discardWhenMust ctx x = if mustRun ctx then Nothing else x
 
 runTaskCached :: Context -> Cache -> Task a -> IO (a, Cache)
 runTaskCached ctx cache (TaskMatchVoid p (Recipe r)) =
-    case retrieveFromCache cache :: Maybe CacheMatchVoid of
+    let cached = retrieveFromCache cache :: Maybe CacheMatchVoid
+    in case discardWhenMust ctx cached of
       Nothing -> do
         paths  <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
         mapM (r . toRecipeContext ctx) paths >> return (() , asCache paths)
@@ -82,7 +87,8 @@ runTaskCached ctx cache (TaskMatchVoid p (Recipe r)) =
 
 
 runTaskCached ctx cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
-    case retrieveFromCache cache :: Maybe (CacheMatch b) of
+    let cached = retrieveFromCache cache :: Maybe (CacheMatch b)
+    in case discardWhenMust ctx cached of
       Nothing -> do
         paths  <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
         values <- mapM (r . toRecipeContext ctx) paths
@@ -100,15 +106,25 @@ runTaskCached ctx cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
         return (map snd cache', asCache $ cache')
 
 
-runTaskCached ctx cache (TaskWith (x :: b) (t :: Task a) :: Task a) =
-    case retrieveFromCache cache :: Maybe (CacheWith b a) of
+runTaskCached ctx cache (TaskWith (x :: b) (t :: Task a)) =
+    let cached = retrieveFromCache cache :: Maybe (CacheWith b a)
+    in case discardWhenMust ctx cached of
         Nothing -> runTaskCached ctx cache t <&> \v -> (fst v, asCache (x, v))
         Just (x', v) ->
             if x == x' then pure (fst v , cache)
             else runTaskCached ctx cache t <&> \v -> (fst v, asCache (x, v))
 
+runTaskCached ctx cache (TaskWatch (x :: b) (t :: Task a)) =
+    let cached = retrieveFromCache cache :: Maybe (CacheWatch b a)
+    in case discardWhenMust ctx cached of
+        Nothing      -> runTaskCached ctx cache t
+                          <&> \v -> (fst v, asCache (x, snd v))
+        Just (x', v) -> runTaskCached(ctx {mustRun = x /= x'}) cache t
+                          <&> \v -> (fst v, asCache (x, snd v))
 
-runTaskCached ctx cache (TaskIO x) = (, emptyCache) <$> x
+
+runTaskCached ctx cache (TaskRecipe (Recipe r)) =
+    (, emptyCache) <$> r (toRecipeContext ctx ())
 
 runTaskCached ctx cache (TaskBind t f) = do
     let (tcache, fcache) = fromMaybe (emptyCache, emptyCache)
@@ -125,7 +141,10 @@ run config t = do
     timestamp   <- if cacheExists then
                         getModificationTime (Config.cacheFile config)
                    else pure (UTCTime (ModifiedJulianDay 0) 0)
-    let ctx = Context (Config.contentDir config) (Config.outputDir config) timestamp
+    let ctx = Context (Config.contentDir config)
+                      (Config.outputDir config)
+                      timestamp
+                      False
     (value, cache') <-
         if cacheExists then do
             handle <- openBinaryFile (cacheFile config) ReadMode
