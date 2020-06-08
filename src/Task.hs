@@ -12,7 +12,8 @@ import System.Directory
 
 import Data.Functor    ((<&>))
 import Data.Typeable   (Typeable)
-import Data.Binary     (Binary, decodeFile, encodeFile)
+import Data.Binary     (Binary, decodeFileOrFail, encodeFile)
+import Data.Either     (fromRight)
 import Data.Dynamic.Binary
 import Control.Monad   (liftM, liftM2, forM)
 import Control.Applicative
@@ -30,7 +31,7 @@ import Cache
 -- | Description of a task producing an intermediate value of type a
 data Task a where
     TaskMatch  :: (Typeable a, Binary a) => Glob.Pattern -> Recipe FilePath a -> Task [a]
-    TaskWith   :: (Typeable a, Binary a, Eq a, Typeable b, Binary b) => a -> Recipe a b -> Task b
+    TaskWith   :: (Typeable a, Binary a, Eq a, Typeable b, Binary b) => a -> Task b -> Task b
     TaskIO     :: IO a -> Task a
     TaskBind   :: Task a -> (a -> Task b) -> Task b
 
@@ -46,17 +47,21 @@ runTaskCached cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
         paths <- withCurrentDirectory contentDir (Glob.globDir1 p "")
         cache' <- forM paths \p ->
             case lookup p cached of
-                Just v  -> pure (p , v) -- TODO: check edit time
+                Just v  -> do
+                    tcache <- getModificationTime cacheFile
+                    tfile  <- getModificationTime (contentDir </> p)
+                    if tcache < tfile then (p,) <$> r p
+                    else pure (p , v)
                 Nothing -> (p,) <$> r p 
         return (map snd cache', toCache cache')
 
 
-runTaskCached cache (TaskWith (x :: b) (Recipe r :: Recipe b a)) =
+runTaskCached cache (TaskWith (x :: b) (t :: Task a) :: Task a) =
     case fromCache cache :: Maybe (CacheWith b a) of
-        Nothing -> r x <&> \v -> (v, toCache (x, v))
+        Nothing -> runTaskCached cache t <&> \v -> (fst v, toCache (x, v))
         Just (x', v) ->
-            if x == x' then pure (v , cache)
-            else r x <&> \v -> (v, toCache (x, v))
+            if x == x' then pure (fst v , cache)
+            else runTaskCached cache t <&> \v -> (fst v, toCache (x, v))
 
 runTaskCached cache (TaskIO x) = (,cache) <$> x
 
@@ -84,11 +89,10 @@ runTaskCached cache (TaskBind (TaskBind ta f) g) =
 achille :: (Typeable a, Binary a) => Task a -> IO a
 achille t = do
     cacheExists <- doesFileExist cacheFile
-    cache <- if cacheExists then putStrLn "Found cache. loading..."
-                              >> decodeFile cacheFile
-                            else pure $ toDyn ()
+    cache <- if cacheExists then decodeFileOrFail cacheFile
+                                 <&> fromRight emptyCache
+                            else pure emptyCache
     (value, cache') <- runTaskCached cache t
-    putStrLn "Updating cache..."
     encodeFile cacheFile cache'
     pure value
 
@@ -111,5 +115,5 @@ instance Monad Task where
 match :: (Typeable a, Binary a) => Glob.Pattern -> Recipe FilePath a -> Task [a]
 match = TaskMatch
 
-with :: (Typeable a, Binary a, Eq a, Typeable b, Binary b) => a -> Recipe a b -> Task b
+with :: (Typeable a, Binary a, Eq a, Typeable b, Binary b) => a -> Task b -> Task b
 with = TaskWith

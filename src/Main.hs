@@ -65,24 +65,29 @@ runCommand Build  = void $ achille build
 
 
 build = do
-    with "quid.rst" $ void $
-        (compilePandoc <&> outer >>= saveTo (-<.> "html"))
-        <?> "building visual index"
+    match "assets/theme.css" $ void copy
 
-    pictures <- match "visual/*/*" $ copy <?> "saving image"
+    match "./quid.rst" $ void $
+        compilePandoc <&> outer >>= saveTo (-<.> "html")
 
-    with "visual.rst" $ do
+    pictures <- match "visual/*/*" do
+        copy
+        readImage
+            <&> scaleBilinear 300 300
+            >>= saveTo (+<.> "thumb")
+
+    with pictures $ match "./visual.rst" $ void do
         txt    <- compilePandoc
         images <- recentFirst <$> mapM toItem pictures
         write "visual.html" $ renderVisual txt images
 
     posts <- match "posts/*" do
-        src <- copy <?> "copying raw post"
+        src <- copy
         compilePandoc
             <&> renderPost src
             >>= saveTo (-<.> "html")
 
-    with "index.rst" $
-        compilePandoc <?> "rendering index"
+    with posts $ match "./index.rst" $ void do
+        compilePandoc
             <&> renderIndex posts
             >>= saveTo (-<.> "html")

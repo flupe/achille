@@ -15,4 +15,5 @@ It is very inspired by [Hakyll], but much smaller in scope.
 achille provides many utilities for common use cases.
 It optionally comes with recipes for converting documents using pandoc.
 
-We have real monads everywhere too, so we're not abusing the `do` notation!
+Additionally our `Task` description for constructing intermediate values is *a real monad*™, so we're not abusing the `do` notation!
+

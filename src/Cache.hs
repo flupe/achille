@@ -23,7 +23,7 @@ emptyCache :: Cache
 emptyCache = toDyn ()
 
 type CacheMatch b  = [(FilePath, (b))]
-type CacheWith a b = (a, b)
+type CacheWith a b = (a, (b, Cache))
 
 
 fromCache :: (Typeable a, Binary a) => Cache -> Maybe a
