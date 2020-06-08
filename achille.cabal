@@ -10,7 +10,6 @@ executable site
                   , Config
                   , Writable
                   , Recipe
-                  , Cache
                   , Task
                   , Thumbnail
                   , Timestamped

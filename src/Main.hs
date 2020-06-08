@@ -16,7 +16,6 @@ import Data.List            (sort)
 import Prelude hiding (readFile, read)
 import Text.Pandoc.Options
 
-
 import Templates
 import Recipe hiding (compilePandoc)
 import Config
