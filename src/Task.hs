@@ -71,7 +71,8 @@ retrieveFromCache cache =
 asCache :: Binary a => a -> Cache
 asCache = Binary.encode
 
-runTaskCached :: Binary a => Cache -> Task a -> IO (a, Cache)
+
+runTaskCached :: Cache -> Task a -> IO (a, Cache)
 runTaskCached cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
     case retrieveFromCache cache :: Maybe (CacheMatch b) of
       Nothing -> do
@@ -118,7 +119,7 @@ runTaskCached cache (TaskBind (TaskBind ta f) g) =
 
 
 -- | Main runner, takes care of loading and updating the cache
-achille :: Binary a => Task a -> IO a
+achille :: Task a -> IO a
 achille t = do
     cacheExists <- doesFileExist cacheFile
     (value, cache') <-
