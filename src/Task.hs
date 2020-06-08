@@ -12,9 +12,9 @@ import System.Directory
 import System.IO             (openBinaryFile, hClose, IOMode(ReadMode))
 
 import Data.Functor          ((<&>))
-import Control.Monad         (liftM, liftM2, forM)
+import Control.Monad         (liftM, liftM2, forM, forM_, when, void)
 import Control.Applicative
-import Data.List             (lookup)
+import Data.List             (lookup, elem)
 import Data.Either           (fromRight)
 import Data.Maybe            (fromMaybe)
 
@@ -32,10 +32,11 @@ import Config
 
 -- | Description of a task producing an intermediate value of type a
 data Task a where
-    TaskMatch  :: Binary a => Glob.Pattern -> Recipe FilePath a -> Task [a]
-    TaskWith   :: (Binary a, Eq a, Binary b) => a -> Task b -> Task b
-    TaskIO     :: IO a -> Task a
-    TaskBind   :: Task a -> (a -> Task b) -> Task b
+    TaskMatchVoid :: Glob.Pattern -> Recipe FilePath a -> Task ()
+    TaskMatch     :: Binary a => Glob.Pattern -> Recipe FilePath a -> Task [a]
+    TaskWith      :: (Binary a, Eq a, Binary b) => a -> Task b     -> Task b
+    TaskIO        :: IO a -> Task a
+    TaskBind      :: Task a -> (a -> Task b) -> Task b
 
 
 -- | Our cache is simply a lazy bytestring
@@ -44,12 +45,18 @@ type Cache = ByteString
 emptyCache :: Cache
 emptyCache = ByteString.empty
 
+-- | Content of a TaskMatchVoid task stored in cache
+data CacheMatchVoid = CacheMatchVoid [FilePath]
+
 -- | Content of a TaskMatch task stored in cache
 data CacheMatch b = CacheMatch [(FilePath, b)]
 
 -- | Content of a TaskWith task stored in cache
 data CacheWith a b = CacheWith a (b, Cache)
 
+instance Binary CacheMatchVoid where
+    put (CacheMatchVoid x) = put x
+    get = CacheMatchVoid <$> get
 
 instance Binary b => Binary (CacheMatch b) where
     put (CacheMatch x) = put x
@@ -72,6 +79,20 @@ asCache = Binary.encode
 
 
 runTaskCached :: Cache -> Task a -> IO (a, Cache)
+runTaskCached cache (TaskMatchVoid p (Recipe r)) =
+    case retrieveFromCache cache :: Maybe CacheMatchVoid of
+      Nothing -> do
+        paths  <- withCurrentDirectory contentDir (Glob.globDir1 p "")
+        mapM r paths >> return (() , asCache $ CacheMatchVoid paths)
+      Just (CacheMatchVoid paths') -> do
+        paths  <- withCurrentDirectory contentDir (Glob.globDir1 p "")
+        forM_ paths \p ->
+            when (elem p paths') do
+                tcache <- getModificationTime cacheFile
+                tfile  <- getModificationTime (contentDir </> p)
+                when (tcache < tfile) (void $ r p)
+        return ((), asCache $ CacheMatchVoid $ paths)
+
 runTaskCached cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
     case retrieveFromCache cache :: Maybe (CacheMatch b) of
       Nothing -> do
@@ -99,22 +120,12 @@ runTaskCached cache (TaskWith (x :: b) (t :: Task a) :: Task a) =
 
 runTaskCached cache (TaskIO x) = (,cache) <$> x
 
-runTaskCached cache (TaskBind t@(TaskMatch _ _) f) = do
-    let (tcache, fcache) = fromMaybe (emptyCache, emptyCache) $ retrieveFromCache cache
+runTaskCached cache (TaskBind t f) = do
+    let (tcache, fcache) = fromMaybe (emptyCache, emptyCache)
+                         $ retrieveFromCache cache
     (vt, tcache') <- runTaskCached tcache t
     (vf, fcache') <- runTaskCached fcache (f vt)
     return (vf , asCache (tcache', fcache'))
-
-runTaskCached cache (TaskBind t@(TaskWith _ _) f) = do
-    let (tcache, fcache) = fromMaybe (emptyCache, emptyCache) $ retrieveFromCache cache
-    (vt, tcache') <- runTaskCached tcache t
-    (vf, fcache') <- runTaskCached fcache (f vt)
-    return (vf , asCache (tcache', fcache'))
-
-runTaskCached cache (TaskBind t@(TaskIO x) f) = x >>= runTaskCached cache . f
-
-runTaskCached cache (TaskBind (TaskBind ta f) g) = 
-    runTaskCached cache (TaskBind ta \a -> TaskBind (f a) g)
 
 
 -- | Main runner, takes care of loading and updating the cache
@@ -150,6 +161,9 @@ instance Monad Task where
 
 match :: Binary a => Glob.Pattern -> Recipe FilePath a -> Task [a]
 match = TaskMatch
+
+match_ :: Glob.Pattern -> Recipe FilePath a -> Task ()
+match_ = TaskMatchVoid
 
 with :: (Binary a, Eq a, Binary b) => a -> Task b -> Task b
 with = TaskWith

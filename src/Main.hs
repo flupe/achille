@@ -65,10 +65,8 @@ runCommand Build  = void $ achille build
 
 
 build = do
-    match "assets/theme.css" $ void copy
-
-    match "./quid.rst" $ void $
-        compilePandoc <&> outer >>= saveTo (-<.> "html")
+    match_ "assets/theme.css" copy
+    match_ "./quid.rst" $ compilePandoc <&> outer >>= saveTo (-<.> "html")
 
     pictures <- match "visual/*/*" do
         copy
@@ -77,7 +75,7 @@ build = do
             >>= saveThumbnailTo (+<.> "thumb")
             <&> timestampedWith (timestamp . thumbPath)
 
-    with pictures $ match "./visual.rst" $ void do
+    with pictures $ match_ "./visual.rst" do
         txt    <- compilePandoc
         write "visual.html" $ renderVisual txt (recentFirst pictures)
 
@@ -87,7 +85,7 @@ build = do
             <&> renderPost src
             >>= saveTo (-<.> "html")
 
-    with posts $ match "./index.rst" $ void do
+    with posts $ match_ "./index.rst" do
         compilePandoc
             <&> renderIndex posts
             >>= saveTo (-<.> "html")
