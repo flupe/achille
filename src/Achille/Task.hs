@@ -1,34 +1,163 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE RecordWildCards     #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Achille.Task
     ( Task
     , match
     , match_
+    , matchDir
+    , matchDir_
     , with
     , watch
+    , runTask
     ) where
 
 
-import Control.Applicative   (liftA2)
-import Control.Monad         (liftM, liftM2)
+import Data.Functor          ((<&>))
+import Control.Monad         (forM)
 import Data.Binary           (Binary)
-import System.FilePath       (FilePath)
+import System.FilePath       (FilePath, (</>))
 import System.FilePath.Glob  (Pattern)
+import System.Directory
+import System.IO             (openBinaryFile, hClose, IOMode(ReadMode))
+import Data.Time.Clock       (UTCTime(..))
+import Data.Time.Calendar    (Day(..))
 
-import Achille.Internal (Recipe(..), Task)
+import qualified System.FilePath.Glob as Glob
+import qualified Data.ByteString.Lazy as ByteString
+
+import Achille.Config (Config)
+import Achille.Internal
+
+import qualified Achille.Config as Config
+
+-- what our tasks are caching
+type MatchVoid  = [(FilePath, Cache)]
+type Match b    = [(FilePath, (b, Cache))]
+type MatchDir   = [(FilePath, Cache)]
+type With a b   = (a, (b, Cache))
+type Watch a b  = (a, Cache)
+
+shouldForce :: Context a -> FilePath -> Bool
+shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 
 
 match :: Binary a => Pattern -> Recipe FilePath a -> Task [a]
-match = Match
+match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
+    let (cached, c'@Context{..}) = fromContext ctx
+    paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    case cached :: Maybe (Match b) of
+        Nothing -> do
+            result <- forM paths \p ->
+                (p,) <$> r c' { inputValue = p
+                              , cache = emptyCache
+                              }
+            return (map (fst . snd) result, toCache (result :: Match b))
+        Just cached -> do
+            result <- forM paths \p ->
+                case lookup p cached of
+                    Just (v, cache) -> (p,) <$> do
+                        tfile  <- getModificationTime (inputDir </> p)
+                        if timestamp < tfile || shouldForce ctx (inputDir </> p) then
+                            r c' {inputValue = p, cache = cache}
+                        else pure (v, cache)
+                    Nothing -> (p,) <$> r c' {inputValue = p, cache = emptyCache}
+            return (map (fst . snd) result, toCache (result :: Match b))
 
-matchDir :: Pattern -> Recipe FilePath a -> Task [a]
-matchDir = MatchDir
 
 match_ :: Pattern -> Recipe FilePath a -> Task ()
-match_ = MatchVoid
+match_ p (Recipe r) = Recipe \ctx -> do
+    let (result, c'@Context{..}) = fromContext ctx 
+    paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    case result :: Maybe MatchVoid of
+        Nothing -> do
+            result <- forM paths \p ->
+                ((p,) . snd) <$> r c' { inputValue = p
+                                      , cache = emptyCache
+                                      }
+            return (() , toCache (result :: MatchVoid))
+        Just cached -> do
+            result <- forM paths \p ->
+                case lookup p cached of
+                    Just cache -> (p,) <$> do
+                        tfile <- getModificationTime (inputDir </> p)
+                        if timestamp < tfile || shouldForce ctx (inputDir </> p) then
+                            snd <$> r c' {inputValue = p, cache = cache}
+                        else pure cache
+                    Nothing -> ((p,) . snd) <$> r c' {inputValue = p, cache = emptyCache}
+            return ((), toCache (result :: MatchVoid))
+
+
+matchDir :: Pattern -> Recipe FilePath a -> Task [a]
+matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
+    let (result, c'@Context{..}) = fromContext ctx 
+    paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    case result :: Maybe MatchDir of
+        Nothing -> do
+            result <- forM paths \p ->
+                          r c' { inputValue = p
+                               , inputDir   = inputDir </> p
+                               , cache      = emptyCache
+                               }
+            return (map fst result, toCache (zip paths (map snd result) :: MatchDir))
+        Just cached -> do
+            result <- forM paths \p ->
+                case lookup p cached of
+                    Just cache -> r c' { inputValue = p
+                                       , inputDir   = inputDir </> p
+                                       , cache      = cache
+                                       }
+                    Nothing -> r c' {inputValue = p, cache = emptyCache}
+            return (map fst result, toCache (zip paths (map snd result) :: MatchDir))
+
+
+matchDir_ :: Pattern -> Recipe FilePath a -> Task [a]
+matchDir_ = undefined
 
 with :: (Binary a, Eq a, Binary b) => a -> Task b -> Task b
-with = With
+with (x :: c) (Recipe r :: Recipe () b) = Recipe \ctx ->
+    let (result, c'@Context{..}) = fromContext ctx 
+    in case result :: Maybe (With c b) of
+        Nothing ->
+            r c' {cache = emptyCache}
+                <&> \v -> (fst v, toCache ((x, v) :: With c b))
+        Just (x', (v, cache)) ->
+            if x == x' then pure (v , toCache ((x', (v, cache)) :: With c b))
+            else r c' <&> \v -> (fst v, toCache ((x, v) :: With c b))
 
 watch :: (Binary a, Eq a) => a -> Task b -> Task b
-watch = Watch
+watch (x :: a) (Recipe r :: Task b) = Recipe \ctx ->
+    let (result, c'@Context{..}) = fromContext ctx
+    in case result :: Maybe (Watch a b) of
+        Nothing ->
+            r c' {cache = emptyCache}
+                <&> \v -> (fst v, toCache ((x, snd v) :: Watch a b))
+        Just (x', cache) ->
+            r c' {mustRun = if x /= x' then MustRunOne else NoMust, cache = cache}
+                <&> \v -> (fst v, toCache ((x, snd v) :: Watch a b))
+
+
+runTask :: [Glob.Pattern]  -- ^ Files for which we force recompilation
+        -> Config          -- ^ Global config
+        -> Task a          -- ^ The task to be run
+        -> IO a
+runTask force config (Recipe r) = do
+    cacheExists <- doesFileExist (Config.cacheFile config)
+    timestamp   <- if cacheExists then
+                        getModificationTime (Config.cacheFile config)
+                   else pure (UTCTime (ModifiedJulianDay 0) 0)
+    let ctx = Context (Config.contentDir config)
+                      (Config.outputDir config)
+                      timestamp
+                      force
+                      NoMust
+    (value, cache') <-
+        if cacheExists then do
+            handle <- openBinaryFile (Config.cacheFile config) ReadMode
+            cache  <- ByteString.hGetContents handle
+            ret    <- r (ctx cache ())
+            hClose handle
+            pure ret
+        else r (ctx emptyCache ())
+    ByteString.writeFile (Config.cacheFile config) cache'
+    pure value

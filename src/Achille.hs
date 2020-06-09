@@ -4,7 +4,6 @@ module Achille
     , module Achille.Thumbnail
     , module Achille.Recipe
     , module Achille.Task
-    , module Achille.Run
 
     , AchilleCommand
     , achilleCLI
@@ -24,7 +23,6 @@ import Achille.Timestamped
 import Achille.Thumbnail
 import Achille.Recipe hiding (Context)
 import Achille.Task
-import Achille.Run    hiding (Context)
 
 
 data AchilleCommand
@@ -52,7 +50,7 @@ achilleWith config task = customExecParser p opts >>= \case
     Deploy -> mapM_ callCommand  (deployCmd config)
     Clean  -> removePathForcibly (outputDir config)
            >> removePathForcibly (cacheFile config)
-    Build paths -> void $ run (map compile paths) config task
+    Build paths -> void $ runTask (map compile paths) config task
     where
         opts = info (achilleCLI <**> helper) $ fullDesc <> header desc
         p    = prefs showHelpOnEmpty

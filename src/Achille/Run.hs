@@ -23,7 +23,6 @@ import System.FilePath       ((</>))
 import System.Directory
 
 import qualified System.FilePath.Glob as Glob
-import qualified Data.ByteString.Lazy as ByteString
 import qualified Data.Binary          as Binary
 
 import Achille.Config hiding (outputDir)
@@ -60,16 +59,6 @@ retrieveFromCache cache =
 -- | Encode a value
 asCache :: Binary a => a -> Cache
 asCache = Binary.encode
-
-
-data Context a = Context
-    { inputDir    :: FilePath        -- ^ Current input directory
-    , outputDir   :: FilePath        -- ^ Current output directory
-    , timestamp   :: UTCTime         -- ^ Timestamp of the last run
-    , forceFiles  :: [Glob.Pattern]  -- ^ Files whose recompilation we force
-    , mustRun     :: Bool            -- ^ Whether the current task should be forced
-    , inputValue  :: a
-    } deriving (Functor)
 
 
 shouldForce :: Context a -> FilePath -> Bool

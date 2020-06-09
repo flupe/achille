@@ -32,7 +32,6 @@ library
                    , Achille.Internal
                    , Achille.Recipe
                    , Achille.Task
-                   , Achille.Run
   build-depends:     base == 4.*
                    , process
                    , filepath
