@@ -29,6 +29,7 @@ library
                    , Achille.Config
                    , Achille.Writable
                    , Achille.Timestamped
+                   , Achille.Internal
                    , Achille.Recipe
                    , Achille.Task
                    , Achille.Run

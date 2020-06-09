@@ -6,7 +6,10 @@ module Achille
     , module Achille.Task
     , module Achille.Run
 
+    , AchilleCommand
+    , achilleCLI
     , achille
+    , achilleWith
     ) where
 
 
@@ -24,15 +27,15 @@ import Achille.Task
 import Achille.Run    hiding (Context)
 
 
-data Command
+data AchilleCommand
     = Build [String]  -- ^ Build the site once
     | Deploy          -- ^ Deploy to the server
     | Clean           -- ^ Delete all artefacts
     deriving (Eq, Show)
 
 
-cli :: Parser Command
-cli = subparser $
+achilleCLI :: Parser AchilleCommand
+achilleCLI = subparser $
       command "build"  (info (Build <$> many (argument str (metavar "FILES")))  (progDesc "Build the site once" ))
    <> command "deploy" (info (pure Deploy) (progDesc "Server go brrr"      ))
    <> command "clean"  (info (pure Clean)  (progDesc "Delete all artefacts"))
@@ -51,6 +54,6 @@ achilleWith config task = customExecParser p opts >>= \case
            >> removePathForcibly (cacheFile config)
     Build paths -> void $ run (map compile paths) config task
     where
-        opts = info (cli <**> helper) $ fullDesc <> header desc
+        opts = info (achilleCLI <**> helper) $ fullDesc <> header desc
         p    = prefs showHelpOnEmpty
         desc = "A static site generator for fun and profit"
