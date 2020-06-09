@@ -57,6 +57,9 @@ data Recipe a b where
                         => a       -- The value
                         -> Task b  -- The task
                         -> Task b
+
+    -- TODO: if we make RunIO powerful enough, we ought to be able to 
+    --       encode everything above. That would be nice
     -- | Encodes a recipe doing IO
     RunIO               :: (Context a -> IO b) -> Recipe a b
 

@@ -42,8 +42,9 @@ emptyCache :: Cache
 emptyCache = ByteString.empty
 
 
-type MatchVoid  = [FilePath]
+type MatchVoid  = [(FilePath, Cache)]
 type Match b    = [(FilePath, (b, Cache))]
+type MatchDir   = [(FilePath, Cache)]
 type With a b   = (a, (b, Cache))
 type Watch a b  = (a, Cache)
 
@@ -82,48 +83,64 @@ discardWhenMust ctx x = if mustRun ctx then Nothing else x
 
 runRecipe :: Context a -> Cache -> Recipe a b -> IO (b, Cache)
 
-runRecipe ctx@Context{..} cache (MatchVoid p r) =
-    let cached = retrieveFromCache cache :: Maybe MatchVoid
-    in case discardWhenMust ctx cached of
-      Nothing -> do
-        paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
-        forM_ paths \p -> runRecipe ctx {inputValue = p} cache r
-        return (() , asCache (paths :: MatchVoid))
-      Just paths' -> do
-        paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
-        forM_ paths \p ->
-            when (elem p paths' || shouldForce ctx (inputDir </> p)) do
-                tfile <- getModificationTime (inputDir </> p)
-                when (timestamp < tfile) (void $ runRecipe ctx {inputValue = p} emptyCache r)
-        return ((), asCache $ (paths :: MatchVoid))
 
-runRecipe ctx@Context{..} cache (Match p (r :: Recipe FilePath b)) =
+runRecipe ctx@Context{..} cache (MatchVoid p r) = do
+    let cached = retrieveFromCache cache :: Maybe MatchVoid
+    paths  <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    case discardWhenMust ctx cached of
+        Nothing -> do
+            result <- forM paths \p -> ((p,) . snd) <$> runRecipe ctx {inputValue = p} emptyCache r
+            return (() , asCache (result :: MatchVoid))
+        Just cached -> do
+            result <- forM paths \p ->
+                case lookup p cached of
+                    Just cache -> (p,) <$> do
+                        tfile <- getModificationTime (inputDir </> p)
+                        if timestamp < tfile || shouldForce ctx (inputDir </> p) then
+                            snd <$> runRecipe ctx {inputValue = p} cache r
+                        else pure cache
+                    Nothing -> ((p,) . snd) <$> runRecipe ctx {inputValue = p} emptyCache r
+            return ((), asCache $ (result :: MatchVoid))
+
+
+runRecipe ctx@Context{..} cache (Match p (r :: Recipe FilePath b)) = do
     let cached = retrieveFromCache cache :: Maybe (Match b)
-    in case discardWhenMust ctx cached of
-      Nothing -> do
-        paths  <- withCurrentDirectory inputDir (Glob.globDir1 p "")
-        values <- forM paths \p -> runRecipe ctx {inputValue = p} emptyCache r
-        return (map fst values, asCache $ (zip paths values :: Match b))
-      Just cached -> do
-        paths  <- withCurrentDirectory inputDir (Glob.globDir1 p "")
-        cache' <- forM paths \p ->
-            case lookup p cached of
-                Just v  -> do
-                    tfile  <- getModificationTime (inputDir </> p)
-                    if timestamp < tfile || shouldForce ctx (inputDir </> p) then
-                        runRecipe ctx {inputValue = p} emptyCache r
-                    else pure v
-                Nothing -> runRecipe ctx {inputValue = p} emptyCache r
-        return (map fst cache', asCache $ (zip paths cache' :: Match b))
+    paths  <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    case discardWhenMust ctx cached of
+        Nothing -> do
+            result <- forM paths \p -> (p,) <$> runRecipe ctx {inputValue = p} emptyCache r
+            return (map (fst . snd) result, asCache $ (result :: Match b))
+        Just cached -> do
+            result <- forM paths \p ->
+                case lookup p cached of
+                    Just (v, cache) -> (p,) <$> do
+                        tfile  <- getModificationTime (inputDir </> p)
+                        if timestamp < tfile || shouldForce ctx (inputDir </> p) then
+                            runRecipe ctx {inputValue = p} cache r
+                        else pure (v, cache)
+                    Nothing -> (p,) <$> runRecipe ctx {inputValue = p} emptyCache r
+            return (map (fst . snd) result, asCache $ (result :: Match b))
+
 
 runRecipe ctx@Context{..} cache (MatchDir p (r :: Recipe FilePath b)) = do
+    let cached = retrieveFromCache cache :: Maybe MatchDir
     paths  <- withCurrentDirectory inputDir (Glob.globDir1 p "")
-    values <- forM paths \p ->
-                  runRecipe ctx { inputValue = p
-                                , inputDir   = inputDir </> p
-                                } cache r
-    -- TODO: fix
-    return (map fst values, emptyCache)
+    case discardWhenMust ctx cached of
+        Nothing -> do
+            result <- forM paths \p ->
+                          runRecipe ctx { inputValue = p
+                                        , inputDir   = inputDir </> p
+                                        } emptyCache r
+            return (map fst result, asCache $ (zip paths (map snd result) :: MatchDir))
+        Just cached -> do
+            result <- forM paths \p ->
+                case lookup p cached of
+                    Just cache -> runRecipe ctx { inputValue = p
+                                                , inputDir   = inputDir </> p
+                                                } cache r
+                    Nothing -> runRecipe ctx {inputValue = p} emptyCache r
+            return (map fst result, asCache $ (zip paths (map snd result) :: MatchDir))
+
 
 runRecipe ctx cache (With (x :: c) (r :: Recipe a b)) =
     let cached = retrieveFromCache cache :: Maybe (With c b)
