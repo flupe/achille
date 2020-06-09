@@ -51,6 +51,10 @@ data Context a = Context
     } deriving (Functor)
 
 
+-- TODO: Recipe just looks like smth dying to be Task
+--       GENERALIZEE EVERYTHNIG, CACHE EVERYTHHENG
+
+
 -- | Type of recipes for cooking some b given an input a and a working directory
 newtype Recipe a b = Recipe { unRecipe :: Context a -> IO b }
 
@@ -119,6 +123,7 @@ copyTo mod = Recipe \(Context inputDir outputDir p) ->
 -- | Recipe for loading a pandoc document
 readPandoc :: Recipe FilePath Pandoc
 readPandoc = readPandocWith def
+
 
 -- | Recipe for loading a pandoc document using a given reader config
 readPandocWith :: ReaderOptions -> Recipe FilePath Pandoc

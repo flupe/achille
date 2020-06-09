@@ -1,4 +1,5 @@
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE GADTs #-}
 
 module Achille.Run
@@ -57,49 +58,52 @@ asCache = Binary.encode
 
 
 data Context = Context
-    { inputDir   :: FilePath   -- ^ Current input directory
-    , outputDir  :: FilePath   -- ^ Current output directory
-    , timestamp  :: UTCTime    -- ^ Timestamp of the last run
-    , mustRun    :: Bool
+    { inputDir   :: FilePath        -- ^ Current input directory
+    , outputDir  :: FilePath        -- ^ Current output directory
+    , timestamp  :: UTCTime         -- ^ Timestamp of the last run
+    , forceFiles :: [Glob.Pattern]  -- ^ Files whose recompilation we force
+    , mustRun    :: Bool            -- ^ Whether the current task should be forced
     }
 
+shouldForce :: Context -> FilePath -> Bool
+shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 
 toRecipeContext :: Context -> a -> Recipe.Context a
-toRecipeContext (Context i o _ _) x = Recipe.Context i o x
+toRecipeContext Context{..} x = Recipe.Context inputDir outputDir x
 
 discardWhenMust :: Context -> Maybe a -> Maybe a
 discardWhenMust ctx x = if mustRun ctx then Nothing else x
 
 runTaskCached :: Context -> Cache -> Task a -> IO (a, Cache)
-runTaskCached ctx cache (TaskMatchVoid p (Recipe r)) =
+runTaskCached ctx@Context{..} cache (TaskMatchVoid p (Recipe r)) =
     let cached = retrieveFromCache cache :: Maybe CacheMatchVoid
     in case discardWhenMust ctx cached of
       Nothing -> do
-        paths <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
+        paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
         mapM (r . toRecipeContext ctx) paths >> return (() , asCache paths)
       Just paths' -> do
-        paths <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
+        paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
         forM_ paths \p ->
-            when (elem p paths') do
-                tfile <- getModificationTime (inputDir ctx </> p)
-                when (timestamp ctx < tfile) (void $ r $ toRecipeContext ctx p)
+            when (elem p paths' || shouldForce ctx (inputDir </> p)) do
+                tfile <- getModificationTime (inputDir </> p)
+                when (timestamp < tfile) (void $ r $ toRecipeContext ctx p)
         return ((), asCache $ paths)
 
 
-runTaskCached ctx cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
+runTaskCached ctx@Context{..} cache (TaskMatch p (Recipe r :: Recipe FilePath b)) =
     let cached = retrieveFromCache cache :: Maybe (CacheMatch b)
     in case discardWhenMust ctx cached of
       Nothing -> do
-        paths  <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
+        paths  <- withCurrentDirectory inputDir (Glob.globDir1 p "")
         values <- mapM (r . toRecipeContext ctx) paths
         return (values , asCache $ zip paths values)
       Just cached -> do
-        paths  <- withCurrentDirectory (inputDir ctx) (Glob.globDir1 p "")
+        paths  <- withCurrentDirectory inputDir (Glob.globDir1 p "")
         cache' <- forM paths \p ->
             case lookup p cached of
                 Just v  -> do
-                    tfile  <- getModificationTime (inputDir ctx </> p)
-                    if timestamp ctx < tfile then
+                    tfile  <- getModificationTime (inputDir </> p)
+                    if timestamp < tfile || shouldForce ctx (inputDir </> p) then
                         (p,) <$> r (toRecipeContext ctx p)
                     else pure (p , v)
                 Nothing -> (p,) <$> r (toRecipeContext ctx p)
@@ -135,8 +139,12 @@ runTaskCached ctx cache (TaskBind t f) = do
 
 
 -- | Main runner, takes care of loading and updating the cache
-run :: Config -> Task a -> IO a
-run config t = do
+run :: [Glob.Pattern]  -- ^ Files for which we force recompilation
+    -> Config          -- ^ Global config
+    -> Task a          -- ^ The task to be run
+    -> IO a
+run force config t = do
+    print force
     cacheExists <- doesFileExist (Config.cacheFile config)
     timestamp   <- if cacheExists then
                         getModificationTime (Config.cacheFile config)
@@ -144,6 +152,7 @@ run config t = do
     let ctx = Context (Config.contentDir config)
                       (Config.outputDir config)
                       timestamp
+                      force
                       False
     (value, cache') <-
         if cacheExists then do

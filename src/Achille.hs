@@ -10,9 +10,10 @@ module Achille
     ) where
 
 
-import Control.Monad        (void, mapM_)
-import System.Directory     (removePathForcibly)
-import System.Process       (callCommand)
+import Control.Monad         (void, mapM_)
+import System.Directory      (removePathForcibly)
+import System.Process        (callCommand)
+import System.FilePath.Glob  (compile)
 import Options.Applicative
 
 import Achille.Config
@@ -24,15 +25,15 @@ import Achille.Run    hiding (Context)
 
 
 data Command
-    = Build   -- ^ Build the site once
-    | Deploy  -- ^ Deploy to the server
-    | Clean   -- ^ Delete all artefacts
+    = Build [String]  -- ^ Build the site once
+    | Deploy          -- ^ Deploy to the server
+    | Clean           -- ^ Delete all artefacts
     deriving (Eq, Show)
 
 
 cli :: Parser Command
 cli = subparser $
-      command "build"  (info (pure Build)  (progDesc "Build the site once" ))
+      command "build"  (info (Build <$> many (argument str (metavar "FILES")))  (progDesc "Build the site once" ))
    <> command "deploy" (info (pure Deploy) (progDesc "Server go brrr"      ))
    <> command "clean"  (info (pure Clean)  (progDesc "Delete all artefacts"))
 
@@ -48,7 +49,7 @@ achilleWith config task = customExecParser p opts >>= \case
     Deploy -> mapM_ callCommand  (deployCmd config)
     Clean  -> removePathForcibly (outputDir config)
            >> removePathForcibly (cacheFile config)
-    Build  -> void $ run config task
+    Build paths -> void $ run (map compile paths) config task
     where
         opts = info (cli <**> helper) $ fullDesc <> header desc
         p    = prefs showHelpOnEmpty
