@@ -11,7 +11,7 @@ module Achille.Internal
     , Recipe(..)
     , Task
     , runRecipe
-    , runIO
+    , nonCached
     ) where
 
 
@@ -25,19 +25,19 @@ import Data.Bifunctor        (first, second)
 import System.FilePath.Glob  (Pattern)
 
 
--- | The generation cache is simply a lazy bytestring
+-- | A cache is a lazy bytestring.
 type Cache = ByteString
 
 
--- | An empty cache
+-- | The empty cache.
 emptyCache :: Cache
 emptyCache = empty
 
-
+-- | Cache a value.
 toCache :: Binary a => a -> Cache
 toCache = encode
 
--- | Try to load a value from the cache
+-- | Retrieve a value from cache.
 fromCache :: Binary a => Cache -> Maybe a
 fromCache cache =
     case decodeOrFail cache of
@@ -56,10 +56,12 @@ lowerMustRun :: MustRun -> MustRun
 lowerMustRun MustRunAll = MustRunAll
 lowerMustRun x = NoMust
 
--- | Tries to load a value from the cache,
--- | while respecting the rule for running the recipe.
--- | That is, if the rule must run, nothing will be returned.
--- | We also lower the run rule in the returned context, if possible.
+-- | Try to load a value from the cache,
+--   while respecting the rule for running the recipe.
+--   That is, if the rule must run, nothing will be returned.
+--   We also lower the run rule in the returned context, if possible.
+--
+--   The types are not explicit enough, should rewrite.
 fromContext :: Binary a => Context b -> (Maybe a, Context b)
 fromContext c =
     let r = mustRun c in
@@ -68,20 +70,21 @@ fromContext c =
 
 
 
--- | Context in which a recipe is being executed
+-- | Description of a computation producing a value b given some input a.
+newtype Recipe a b = Recipe (Context a -> IO (b, Cache))
+
+
+-- | Context in which a recipe is being executed.
 data Context a = Context
-    { inputDir    :: FilePath        -- ^ Current input directory
+    { inputDir    :: FilePath        -- ^ Current working directory
     , outputDir   :: FilePath        -- ^ Current output directory
     , timestamp   :: UTCTime         -- ^ Timestamp of the last run
-    , forceFiles  :: [Pattern]  -- ^ Files whose recompilation we force
+    , forceFiles  :: [Pattern]       -- ^ Files marked as dirty
     , mustRun     :: MustRun         -- ^ Whether the current task must run
     , cache       :: Cache           -- ^ Local cache
     , inputValue  :: a               -- ^ Input value
     } deriving (Functor)
 
-
--- | Description of a recipe producing an intermediate value b given some input a
-newtype Recipe a b = Recipe (Context a -> IO (b, Cache))
 
 -- | A task is a recipe with no input
 type Task = Recipe ()
@@ -119,5 +122,7 @@ instance Monad (Recipe a) where
 runRecipe :: Recipe a b -> Context a -> IO (b, Cache)
 runRecipe (Recipe r) = r
 
-runIO :: (Context a -> IO b) -> Recipe a b
-runIO f = Recipe \c -> (, emptyCache) <$> f c
+
+-- | Make a recipe out of a computation that is known not to be cached.
+nonCached :: (Context a -> IO b) -> Recipe a b
+nonCached f = Recipe \c -> (, emptyCache) <$> f c {cache = emptyCache}

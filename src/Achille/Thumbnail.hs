@@ -19,7 +19,7 @@ import Achille.Recipe
 data FitType
     = FitWidth  Int
     | FitHeight Int
-    -- | FitBoth Int Int
+    -- FitBoth Int Int
 
 data Thumbnail = Thumbnail
     { thumbWidth  :: Int

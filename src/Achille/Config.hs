@@ -9,10 +9,13 @@ import Data.Default    (Default, def)
 
 
 data Config = Config
-    { contentDir :: FilePath
-    , outputDir  :: FilePath
-    , cacheFile  :: FilePath
-    , deployCmd  :: Maybe String
+    { contentDir :: FilePath      -- ^ Root of the source directory.
+                                  --   Defaults to @"content"@.
+    , outputDir  :: FilePath      -- ^ Root of the output directory.
+                                  --   Defaults to @"_site"@.
+    , cacheFile  :: FilePath      -- ^ Path where the cache is stored.
+                                  --   Defaults to @".cache"@.
+    , deployCmd  :: Maybe String  -- ^ Command to run for deploying the result.
     }
 
 

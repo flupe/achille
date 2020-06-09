@@ -4,7 +4,6 @@ module Achille
     , module Achille.Thumbnail
     , module Achille.Recipe
     , module Achille.Task
-
     , AchilleCommand
     , achilleCLI
     , achille
@@ -21,7 +20,7 @@ import Options.Applicative
 import Achille.Config
 import Achille.Timestamped
 import Achille.Thumbnail
-import Achille.Recipe hiding (Context)
+import Achille.Recipe
 import Achille.Task
 
 

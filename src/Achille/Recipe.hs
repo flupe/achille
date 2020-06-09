@@ -3,10 +3,9 @@
 
 module Achille.Recipe
     ( Recipe
-    , Context(Context)
     , getInput
     , liftIO
-    , read
+    , readText
     , save
     , saveTo
     , copy
@@ -30,7 +29,7 @@ import Data.Binary      (Binary, encodeFile)
 import System.FilePath
 import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirectory)
 import Data.Text        (Text, pack)
-import Text.Pandoc  hiding (runIO)
+import Text.Pandoc  hiding (nonCached)
 import Text.Blaze.Html  (Html)
 import Codec.Picture (Image, DynamicImage(..), PixelRGB8, convertRGB8)
 
@@ -59,40 +58,40 @@ safeCopyFile from to = ensureDirExists to >> copyFile from to
 -- Recipe building blocks
 ------------------------------
 
--- | Recipe for retrieving the input
+-- | Recipe returning its input.
 getInput :: Recipe a a
-getInput = runIO $ pure . inputValue
+getInput = nonCached $ pure . inputValue
 
--- | Recipe for executing any IO action
+-- | Recipe running an IO action.
 liftIO :: IO b -> Recipe a b
-liftIO x = runIO $ const x
+liftIO x = nonCached $ const x
 
--- | Recipe for retrieving the text of the input file
-read :: Recipe FilePath Text
-read = runIO \Context{..} -> Text.readFile (inputDir </> inputValue)
+-- | Recipe retrieving the text of the input file.
+readText :: Recipe FilePath Text
+readText = nonCached \Context{..} -> Text.readFile (inputDir </> inputValue)
 
--- | Recipe for saving the current value to the same location as the input file
+-- | Recipe for saving the current value to the same location as the input file.
 save :: Writable a => a -> Recipe FilePath FilePath
 save = saveTo id
 
 -- | Recipe for saving the current value to the output dir,
---   using the path modifier
+--   using the path modifier.
 saveTo :: Writable a => (FilePath -> FilePath) -> a -> Recipe FilePath FilePath
-saveTo mod x = runIO \Context{..} -> do
+saveTo mod x = nonCached \Context{..} -> do
     let p'  = mod inputValue
     let out = outputDir </> p'
     ensureDirExists out
     Writable.write out x
     pure p'
 
--- | Recipe for copying an input file to the same location in the output dir
+-- | Recipe for copying an input file to the same location in the output dir.
 copy :: Recipe FilePath FilePath
 copy = copyTo id
 
 -- | Recipe for copying an input file in the output dir,
---   using the path modifier
+--   using the path modifier.
 copyTo :: (FilePath -> FilePath) -> Recipe FilePath FilePath
-copyTo mod = runIO \Context{..} ->
+copyTo mod = nonCached \Context{..} ->
     safeCopyFile (inputDir </> inputValue) (outputDir </> mod inputValue)
         >> pure (mod inputValue)
 
@@ -103,7 +102,7 @@ readPandoc = readPandocWith def
 
 -- | Recipe for loading a pandoc document using a given reader config
 readPandocWith :: ReaderOptions -> Recipe FilePath Pandoc
-readPandocWith ropts = runIO \Context{..}  ->
+readPandocWith ropts = nonCached \Context{..}  ->
     let ext = drop 1 $ takeExtension inputValue
         Just reader = lookup (pack ext) readers
     in case reader of
@@ -116,7 +115,7 @@ readPandocWith ropts = runIO \Context{..}  ->
 
 -- | Recipe for loading an image using the input path
 readImage :: Recipe FilePath (Image PixelRGB8)
-readImage = runIO \Context{..} ->
+readImage = nonCached \Context{..} ->
     JuicyPixels.readImage (inputDir </> inputValue) >>= \case
         Left e    -> fail e
         Right img -> pure $ convertRGB8 img
@@ -124,7 +123,7 @@ readImage = runIO \Context{..} ->
 
 -- | Recipe for writing to a file
 write :: Writable b => FilePath -> b -> Recipe a ()
-write p x = runIO \Context{..} ->
+write p x = nonCached \Context{..} ->
     ensureDirExists (outputDir </> p)
         >> Writable.write (outputDir </> p) x
 
@@ -133,7 +132,7 @@ write p x = runIO \Context{..} ->
 -- Lifted IO
 ------------------------------
 
--- | Recipe for printing a value to the console
+-- | Recipe for printing a value to the console.
 debug :: Show b => b -> Recipe a ()
 debug = liftIO . putStrLn . show
 
@@ -143,7 +142,7 @@ logInput = getInput >>= debug
 logInputWith :: (Show b) => (a -> b) -> Recipe a ()
 logInputWith f = (f <$> getInput) >>= debug
 
--- | Recipe to convert a Pandoc document to Html
+-- | Recipe to convert a Pandoc document to Html.
 renderPandoc :: Pandoc -> Recipe a Html
 renderPandoc = renderPandocWith def 
 

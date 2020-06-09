@@ -6,7 +6,6 @@ module Achille.Task
     , match
     , match_
     , matchDir
-    , matchDir_
     , with
     , watch
     , runTask
@@ -41,7 +40,9 @@ type Watch a b  = (a, Cache)
 shouldForce :: Context a -> FilePath -> Bool
 shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 
-
+-- | Run a recipe on every filepath matching a given pattern.
+--   The results are cached and the recipe only recomputes
+--   when the underlying file has changed since last run.
 match :: Binary a => Pattern -> Recipe FilePath a -> Task [a]
 match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
     let (cached, c'@Context{..}) = fromContext ctx
@@ -65,6 +66,10 @@ match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
             return (map (fst . snd) result, toCache (result :: Match b))
 
 
+-- | Run a recipe on every filepath matching a given pattern,
+--   and discard the result.
+--   Filepaths are cached and the recipe only recomputes when
+--   the underlying file has changed since last run.
 match_ :: Pattern -> Recipe FilePath a -> Task ()
 match_ p (Recipe r) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
@@ -88,6 +93,9 @@ match_ p (Recipe r) = Recipe \ctx -> do
             return ((), toCache (result :: MatchVoid))
 
 
+-- | For every file matching the pattern, run a recipe with the
+--   file as input and with the file's parent directory as current working directory.
+--   The underlying recipe will be run regardless of whether the file was modified.
 matchDir :: Pattern -> Recipe FilePath a -> Task [a]
 matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
@@ -111,9 +119,6 @@ matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
             return (map fst result, toCache (zip paths (map snd result) :: MatchDir))
 
 
-matchDir_ :: Pattern -> Recipe FilePath a -> Task [a]
-matchDir_ = undefined
-
 with :: (Binary a, Eq a, Binary b) => a -> Task b -> Task b
 with (x :: c) (Recipe r :: Recipe () b) = Recipe \ctx ->
     let (result, c'@Context{..}) = fromContext ctx 
@@ -124,6 +129,7 @@ with (x :: c) (Recipe r :: Recipe () b) = Recipe \ctx ->
         Just (x', (v, cache)) ->
             if x == x' then pure (v , toCache ((x', (v, cache)) :: With c b))
             else r c' <&> \v -> (fst v, toCache ((x, v) :: With c b))
+
 
 watch :: (Binary a, Eq a) => a -> Task b -> Task b
 watch (x :: a) (Recipe r :: Task b) = Recipe \ctx ->
@@ -137,9 +143,11 @@ watch (x :: a) (Recipe r :: Task b) = Recipe \ctx ->
                 <&> \v -> (fst v, toCache ((x, snd v) :: Watch a b))
 
 
+-- | Run a task using the provided config and a list of dirty files.
+--   This takes care of loading the existing cache and updating it.
 runTask :: [Glob.Pattern]  -- ^ Files for which we force recompilation
-        -> Config          -- ^ Global config
-        -> Task a          -- ^ The task to be run
+        -> Config          -- ^ The config
+        -> Task a          -- ^ The task
         -> IO a
 runTask force config (Recipe r) = do
     cacheExists <- doesFileExist (Config.cacheFile config)
