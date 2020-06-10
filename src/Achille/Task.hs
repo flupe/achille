@@ -15,7 +15,7 @@ module Achille.Task
 import Data.Functor          ((<&>))
 import Control.Monad         (forM)
 import Data.Binary           (Binary)
-import System.FilePath       (FilePath, (</>))
+import System.FilePath       (FilePath, (</>), takeDirectory, takeFileName)
 import System.FilePath.Glob  (Pattern)
 import System.Directory
 import System.IO             (openBinaryFile, hClose, IOMode(ReadMode))
@@ -46,7 +46,8 @@ shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 match :: Binary a => Pattern -> Recipe FilePath a -> Task [a]
 match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
     let (cached, c'@Context{..}) = fromContext ctx
-    paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    paths <- withCurrentDirectory (inputDir </> currentDir) $
+                Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
     case cached :: Maybe (Match b) of
         Nothing -> do
             result <- forM paths \p ->
@@ -58,8 +59,8 @@ match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
             result <- forM paths \p ->
                 case lookup p cached of
                     Just (v, cache) -> (p,) <$> do
-                        tfile  <- getModificationTime (inputDir </> p)
-                        if timestamp < tfile || shouldForce ctx (inputDir </> p) then
+                        tfile  <- getModificationTime (inputDir </> currentDir </> p)
+                        if timestamp < tfile || shouldForce ctx (inputDir </> currentDir </> p) then
                             r c' {inputValue = p, cache = cache}
                         else pure (v, cache)
                     Nothing -> (p,) <$> r c' {inputValue = p, cache = emptyCache}
@@ -73,7 +74,8 @@ match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
 match_ :: Pattern -> Recipe FilePath a -> Task ()
 match_ p (Recipe r) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
-    paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    paths <- withCurrentDirectory (inputDir </> currentDir) $
+                Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
     case result :: Maybe MatchVoid of
         Nothing -> do
             result <- forM paths \p ->
@@ -85,8 +87,8 @@ match_ p (Recipe r) = Recipe \ctx -> do
             result <- forM paths \p ->
                 case lookup p cached of
                     Just cache -> (p,) <$> do
-                        tfile <- getModificationTime (inputDir </> p)
-                        if timestamp < tfile || shouldForce ctx (inputDir </> p) then
+                        tfile <- getModificationTime (inputDir </> currentDir </> p)
+                        if timestamp < tfile || shouldForce ctx (inputDir </> currentDir </> p) then
                             snd <$> r c' {inputValue = p, cache = cache}
                         else pure cache
                     Nothing -> ((p,) . snd) <$> r c' {inputValue = p, cache = emptyCache}
@@ -99,20 +101,21 @@ match_ p (Recipe r) = Recipe \ctx -> do
 matchDir :: Pattern -> Recipe FilePath a -> Task [a]
 matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
-    paths <- withCurrentDirectory inputDir (Glob.globDir1 p "")
+    paths <- withCurrentDirectory (inputDir </> currentDir) $
+                Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
     case result :: Maybe MatchDir of
         Nothing -> do
             result <- forM paths \p ->
-                          r c' { inputValue = p
-                               , inputDir   = inputDir </> p
+                          r c' { inputValue = takeFileName p
+                               , currentDir = currentDir </> takeDirectory p
                                , cache      = emptyCache
                                }
             return (map fst result, toCache (zip paths (map snd result) :: MatchDir))
         Just cached -> do
             result <- forM paths \p ->
                 case lookup p cached of
-                    Just cache -> r c' { inputValue = p
-                                       , inputDir   = inputDir </> p
+                    Just cache -> r c' { inputValue = takeFileName p
+                                       , currentDir = currentDir </> takeDirectory p
                                        , cache      = cache
                                        }
                     Nothing -> r c' {inputValue = p, cache = emptyCache}
@@ -156,6 +159,7 @@ runTask force config (Recipe r) = do
                    else pure (UTCTime (ModifiedJulianDay 0) 0)
     let ctx = Context (Config.contentDir config)
                       (Config.outputDir config)
+                      ""
                       timestamp
                       force
                       NoMust

@@ -17,6 +17,7 @@ module Achille.Internal
 
 import Data.Binary           (Binary, encode, decodeOrFail)
 import Data.Maybe            (fromMaybe)
+import Data.Functor          (void)
 import Control.Monad         (liftM2)
 import Control.Applicative   (liftA2)
 import Data.Time.Clock       (UTCTime)
@@ -76,8 +77,9 @@ newtype Recipe a b = Recipe (Context a -> IO (b, Cache))
 
 -- | Context in which a recipe is being executed.
 data Context a = Context
-    { inputDir    :: FilePath        -- ^ Current working directory
-    , outputDir   :: FilePath        -- ^ Current output directory
+    { inputDir    :: FilePath        -- ^ Input root directory
+    , outputDir   :: FilePath        -- ^ Output root directory
+    , currentDir  :: FilePath        -- ^ Current directory
     , timestamp   :: UTCTime         -- ^ Timestamp of the last run
     , forceFiles  :: [Pattern]       -- ^ Files marked as dirty
     , mustRun     :: MustRun         -- ^ Whether the current task must run
