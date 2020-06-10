@@ -1,7 +1,6 @@
 module Achille
     ( module Achille.Config
     , module Achille.Timestamped
-    , module Achille.Thumbnail
     , module Achille.Recipe
     , module Achille.Task
     , AchilleCommand
@@ -13,13 +12,13 @@ module Achille
 
 import Control.Monad         (void, mapM_)
 import System.Directory      (removePathForcibly)
-import System.Process        (callCommand)
 import System.FilePath.Glob  (compile)
 import Options.Applicative
 
+import qualified System.Process as Process
+
 import Achille.Config
 import Achille.Timestamped
-import Achille.Thumbnail
 import Achille.Recipe
 import Achille.Task
 
@@ -46,7 +45,7 @@ achille = achilleWith def
 -- | CLI interface for running a task using given options
 achilleWith :: Config -> Task a -> IO ()
 achilleWith config task = customExecParser p opts >>= \case
-    Deploy -> mapM_ callCommand  (deployCmd config)
+    Deploy -> mapM_ Process.callCommand (deployCmd config)
     Clean  -> removePathForcibly (outputDir config)
            >> removePathForcibly (cacheFile config)
     Build paths -> void $ runTask (map compile paths) config task

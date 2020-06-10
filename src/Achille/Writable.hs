@@ -6,7 +6,6 @@ module Achille.Writable where
 import Data.Text                      (Text)
 import Data.ByteString.Lazy           (ByteString)
 
-import Codec.Picture                  (PngSavable, Image, writePng)
 import Text.Blaze.Html                (Html)
 import Text.Blaze.Html.Renderer.Utf8  (renderHtml)
 
@@ -27,6 +26,3 @@ instance Writable Text where
 
 instance Writable Html where
     write p = ByteString.writeFile p . renderHtml
-
-instance PngSavable pixel => Writable (Image pixel) where
-    write = writePng

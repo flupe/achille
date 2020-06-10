@@ -10,39 +10,33 @@ module Achille.Recipe
     , saveTo
     , copy
     , copyTo
-    , readPandoc
-    , readPandocWith
-    , readImage
     , write
     , task
     , currentDir
     , debug
+    , callCommand
+    , runCommandWith
     , logInput
     , logInputWith
-    , renderPandoc
-    , renderPandocWith
-    , compilePandoc
     , toTimestamped
     ) where
 
 import Prelude hiding (read)
 
-import Data.Binary      (Binary, encodeFile)
-import Data.Functor     (void)
-import Data.Text        (Text, pack)
-import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirectory)
-import Codec.Picture    (Image, DynamicImage(..), PixelRGB8, convertRGB8)
-import Text.Blaze.Html  (Html)
-
-import System.FilePath
-import Text.Pandoc      hiding (nonCached)
+import Data.Binary        (Binary, encodeFile)
+import Data.Functor       (void)
+import Data.Text          (Text, pack)
+import Data.Text.Encoding (decodeUtf8)
+import System.FilePath    ((</>), takeDirectory)
+import System.Directory   (copyFile, createDirectoryIfMissing, withCurrentDirectory)
+import Text.Blaze.Html    (Html)
 
 import qualified Data.Text.IO                     as Text
 import qualified System.FilePath.Glob             as Glob
 import qualified Data.ByteString.Lazy             as ByteString
-import qualified Codec.Picture                    as JuicyPixels
 import qualified Text.Blaze.Html.Renderer.String  as BlazeString
 import qualified System.FilePath                  as Path
+import qualified System.Process                   as Process
 
 import           Achille.Config
 import           Achille.Writable (Writable)
@@ -52,13 +46,21 @@ import           Achille.Internal hiding (currentDir)
 import qualified Achille.Internal as Internal
 
 
+data Color = Red | Blue
+
+color :: Color -> String -> String
+color c x = "\x1b[" <> start <> x <> "\x1b[0m"
+    where start = case c of
+                      Red  -> "31m"
+                      Blue -> "34m"
+
 
 ensureDirExists :: FilePath -> IO ()
 ensureDirExists = createDirectoryIfMissing True . takeDirectory
 
 safeCopyFile :: FilePath -> FilePath -> IO ()
 safeCopyFile from to = ensureDirExists to >> copyFile from to
-    >> putStrLn ("copying from: " <> from <> " to: " <> to)
+                    >> putStrLn (color Blue $ from <> " → " <> to)
 
 ------------------------------
 -- Recipe building blocks
@@ -102,37 +104,13 @@ copyTo mod = nonCached \Context{..} ->
                  (outputDir </> currentDir </> mod inputValue)
         >> pure (mod inputValue)
 
--- | Recipe for loading a pandoc document
-readPandoc :: Recipe FilePath Pandoc
-readPandoc = readPandocWith def
-
-
--- | Recipe for loading a pandoc document using a given reader config
-readPandocWith :: ReaderOptions -> Recipe FilePath Pandoc
-readPandocWith ropts = nonCached \Context{..}  ->
-    let ext = drop 1 $ takeExtension inputValue
-        Just reader = lookup (pack ext) readers
-    in case reader of
-        ByteStringReader f ->
-            ByteString.readFile (inputDir </> currentDir </> inputValue)
-                >>= runIOorExplode <$> f ropts
-        TextReader f ->
-            Text.readFile (inputDir </> currentDir </> inputValue)
-                >>= runIOorExplode <$> f ropts
-
--- | Recipe for loading an image using the input path
-readImage :: Recipe FilePath (Image PixelRGB8)
-readImage = nonCached \Context{..} ->
-    JuicyPixels.readImage (inputDir </> inputValue) >>= \case
-        Left e    -> fail e
-        Right img -> pure $ convertRGB8 img
-
-
 -- | Recipe for writing to a file
-write :: Writable b => FilePath -> b -> Recipe a ()
+write :: Writable b => FilePath -> b -> Recipe a FilePath
 write p x = nonCached \Context{..} ->
     ensureDirExists (outputDir </> currentDir </> p)
         >> Writable.write (outputDir </> currentDir </> p) x
+        >> putStrLn (color Blue $ "writing " <> (outputDir </> currentDir </> p))
+        >> pure p
 
 -- | Make a recipe out of a task. The input will simply be discarded.
 task :: Task b -> Recipe a b
@@ -151,21 +129,23 @@ currentDir = nonCached (pure . Internal.currentDir)
 debug :: Show b => b -> Recipe a ()
 debug = liftIO . putStrLn . show
 
+callCommand :: String -> Recipe a ()
+callCommand = liftIO . Process.callCommand
+
+runCommandWith :: (FilePath -> FilePath)
+               -> (FilePath -> FilePath -> String)
+               -> Recipe FilePath FilePath
+runCommandWith mod cmd = nonCached \Context{..} -> do
+    let p' = mod inputValue
+    Process.callCommand $ cmd (inputDir </> currentDir </> inputValue)
+                              (outputDir </> currentDir </> p')
+    pure p'
+
 logInput :: Show a => Recipe a ()
 logInput = getInput >>= debug
 
 logInputWith :: (Show b) => (a -> b) -> Recipe a ()
 logInputWith f = (f <$> getInput) >>= debug
-
--- | Recipe to convert a Pandoc document to Html.
-renderPandoc :: Pandoc -> Recipe a Html
-renderPandoc = renderPandocWith def 
-
-renderPandocWith :: WriterOptions -> Pandoc -> Recipe a Html
-renderPandocWith wopts = liftIO . runIOorExplode <$> writeHtml5 wopts
-
-compilePandoc :: Recipe FilePath Html
-compilePandoc = readPandoc >>= renderPandoc
 
 toTimestamped :: FilePath -> Recipe a (Timestamped FilePath)
 toTimestamped = liftIO . pure . timestamped

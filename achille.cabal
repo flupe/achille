@@ -11,12 +11,8 @@ flag pandoc
   description: Enable Pandoc support
   default: True
 
-flag blaze
-  description: Enable BlazeHTML support
-  default: True
-
-flag thumbnail
-  description: Enable thumbnail generation support
+flag frontmatter
+  description: Include recipes for parsing frontmatter
   default: True
 
 library
@@ -25,6 +21,7 @@ library
   extensions:        BlockArguments
                    , LambdaCase
                    , TupleSections
+                   , CPP
   exposed-modules:   Achille
                    , Achille.Config
                    , Achille.Writable
@@ -46,14 +43,14 @@ library
                    , optparse-applicative
 
   if flag(pandoc)
+    exposed-modules: Achille.Recipe.Pandoc
     build-depends:   pandoc
                    , pandoc-types
-
-  if flag(blaze) || flag(pandoc)
-    build-depends:   blaze-html
+                   , blaze-html
                    , blaze-markup
 
-  if flag(thumbnail)
-    exposed-modules: Achille.Thumbnail
-    build-depends:   JuicyPixels
-                   , JuicyPixels-extra
+  if flag(frontmatter)
+    exposed-modules: Achille.Recipe.Frontmatter
+    build-depends:   frontmatter
+                   , aeson
+                   , yaml

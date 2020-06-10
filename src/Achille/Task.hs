@@ -37,13 +37,14 @@ type MatchDir   = [(FilePath, Cache)]
 type With a b   = (a, (b, Cache))
 type Watch a b  = (a, Cache)
 
+
 shouldForce :: Context a -> FilePath -> Bool
 shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 
 -- | Run a recipe on every filepath matching a given pattern.
 --   The results are cached and the recipe only recomputes
 --   when the underlying file has changed since last run.
-match :: Binary a => Pattern -> Recipe FilePath a -> Task [a]
+match :: Binary a => Pattern -> Recipe FilePath a -> Recipe c [a]
 match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
     let (cached, c'@Context{..}) = fromContext ctx
     paths <- withCurrentDirectory (inputDir </> currentDir) $
@@ -98,7 +99,7 @@ match_ p (Recipe r) = Recipe \ctx -> do
 -- | For every file matching the pattern, run a recipe with the
 --   file as input and with the file's parent directory as current working directory.
 --   The underlying recipe will be run regardless of whether the file was modified.
-matchDir :: Pattern -> Recipe FilePath a -> Task [a]
+matchDir :: Pattern -> Recipe FilePath a -> Recipe c [a]
 matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
     paths <- withCurrentDirectory (inputDir </> currentDir) $
@@ -122,20 +123,20 @@ matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
             return (map fst result, toCache (zip paths (map snd result) :: MatchDir))
 
 
-with :: (Binary a, Eq a, Binary b) => a -> Task b -> Task b
-with (x :: c) (Recipe r :: Recipe () b) = Recipe \ctx ->
+with :: (Binary a, Eq a, Binary b) => a -> Recipe c b -> Recipe c b
+with (x :: a) (Recipe r :: Recipe c d) = Recipe \ctx ->
     let (result, c'@Context{..}) = fromContext ctx 
-    in case result :: Maybe (With c b) of
+    in case result :: Maybe (With a d) of
         Nothing ->
             r c' {cache = emptyCache}
-                <&> \v -> (fst v, toCache ((x, v) :: With c b))
+                <&> \v -> (fst v, toCache ((x, v) :: With a d))
         Just (x', (v, cache)) ->
-            if x == x' then pure (v , toCache ((x', (v, cache)) :: With c b))
-            else r c' <&> \v -> (fst v, toCache ((x, v) :: With c b))
+            if x == x' then pure (v , toCache ((x', (v, cache)) :: With a d))
+            else r c' <&> \v -> (fst v, toCache ((x, v) :: With a d))
 
 
-watch :: (Binary a, Eq a) => a -> Task b -> Task b
-watch (x :: a) (Recipe r :: Task b) = Recipe \ctx ->
+watch :: (Binary a, Eq a) => a -> Recipe c b -> Recipe c b
+watch (x :: a) (Recipe r :: Recipe c b) = Recipe \ctx ->
     let (result, c'@Context{..}) = fromContext ctx
     in case result :: Maybe (Watch a b) of
         Nothing ->
