@@ -1,4 +1,7 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards       #-}
+{-# LANGUAGE TypeSynonymInstances  #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Achille.Recipe.Pandoc
     ( readPandoc
@@ -17,7 +20,9 @@ import Data.Functor     (void)
 import Data.Text        (Text, pack)
 import Data.Text.Encoding (decodeUtf8)
 import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirectory)
-import Text.Blaze.Html  (Html)
+import Text.Blaze.Html                (Html)
+import Text.Blaze.Html.Renderer.Utf8  (renderHtml)
+
 import System.FilePath
 import Text.Pandoc      hiding (nonCached)
 import Data.Aeson.Types (FromJSON)
@@ -36,6 +41,8 @@ import           Achille.Config
 import           Achille.Internal hiding (currentDir)
 import qualified Achille.Internal as Internal
 import           Achille.Recipe
+import           Achille.Writable as Writable
+import           Achille.Internal.IO (AchilleIO)
 
 
 -- | Recipe for loading a pandoc document
@@ -99,3 +106,7 @@ compilePandocWith :: MonadIO m
                   => ReaderOptions -> WriterOptions -> Recipe m FilePath Html
 compilePandocWith ropts wopts =
     readPandocWith ropts >>= renderPandocWith wopts
+
+
+instance AchilleIO m => Writable m Html where
+    write p = Writable.write p . renderHtml

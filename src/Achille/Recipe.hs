@@ -62,17 +62,17 @@ getCurrentDir = nonCached (pure . Internal.currentDir)
 readText :: AchilleIO m
          => Recipe m FilePath Text
 readText = nonCached \Context{..} ->
-    AchilleIO.readFileText (inputDir </> currentDir </> inputValue)
+    decodeUtf8 <$> AchilleIO.readFile (inputDir </> currentDir </> inputValue)
 
 -- | Recipe for saving a value to the location given as input.
 --   Returns the input filepath as is.
-saveFile :: (AchilleIO m, Writable a)
+saveFile :: (AchilleIO m, Writable m a)
          => a -> Recipe m FilePath FilePath
 saveFile = saveFileAs id
 
 -- | Recipe for saving a value to a file, using the path modifier applied to the input filepath.
 --   Returns the path of the output file.
-saveFileAs :: (AchilleIO m, Writable a)
+saveFileAs :: (AchilleIO m, Writable m a)
            => (FilePath -> FilePath) -> a -> Recipe m FilePath FilePath
 saveFileAs mod x = flip write x =<< mod <$> getInput
 
@@ -98,10 +98,10 @@ copy from to = nonCached \Context{..} -> do
 
 -- | Recipe for writing to a an output file.
 --   Returns the output filepath.
-write :: (AchilleIO m, Writable b)
+write :: (AchilleIO m, Writable m b)
       => FilePath -> b -> Recipe m a FilePath
 write to x = nonCached \Context{..} -> do
-    AchilleIO.writeFile (outputDir  </> currentDir </> to) x
+    Writable.write (outputDir  </> currentDir </> to) x
     AchilleIO.log (color Blue $ "writing " <> (currentDir </> to))
     pure to
 

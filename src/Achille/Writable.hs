@@ -4,26 +4,28 @@
 
 module Achille.Writable where
 
-import Data.Text                      (Text)
-import Data.ByteString.Lazy           (ByteString)
+import Data.Text            as Text
+import Data.Text.Encoding   (encodeUtf8)
+import Data.ByteString      as BS
+import Data.ByteString.Lazy as LBS
 
-import Text.Blaze.Html                (Html)
-import Text.Blaze.Html.Renderer.Utf8  (renderHtml)
-
-import qualified Data.Text.IO         as Text
 import qualified Data.ByteString.Lazy as ByteString
 
-
--- | Class for things that can be saved to disk
-class Writable a where
-    write :: FilePath -> a -> IO ()
+import Achille.Internal.IO as AchilleIO
 
 
-instance Writable [Char] where
-    write = writeFile
+-- | Class for things that can be saved.
+class Writable m a where
+    write :: FilePath -> a -> m ()
 
-instance Writable Text where
-    write = Text.writeFile
+instance AchilleIO m => Writable m [Char] where
+    write to = write to . Text.pack
 
-instance Writable Html where
-    write p = ByteString.writeFile p . renderHtml
+instance AchilleIO m => Writable m Text where
+    write to = AchilleIO.writeFile to . encodeUtf8
+
+instance AchilleIO m => Writable m BS.ByteString where
+    write = AchilleIO.writeFile
+
+instance AchilleIO m => Writable m LBS.ByteString where
+    write = AchilleIO.writeFileLazy

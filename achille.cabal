@@ -41,7 +41,6 @@ library
                    , dates
                    , time
                    , data-default
-                   , blaze-html
                    , optparse-applicative
 
   if flag(pandoc)
@@ -49,6 +48,7 @@ library
     build-depends:   pandoc
                    , pandoc-types
                    , blaze-markup
+                   , blaze-html
 
   if flag(frontmatter)
     exposed-modules: Achille.Recipe.Frontmatter
@@ -59,8 +59,17 @@ library
 test-suite test-achille
   type:           exitcode-stdio-1.0
   main-is:        Main.hs
-  hs-source-dirs: test
+  other-modules:  FakeIO
+  hs-source-dirs: tests
   build-depends:  base >= 4.11 && < 5
+                , directory
+                , text
+                , containers
+                , filepath
+                , bytestring
+                , Glob
                 , tasty
                 , tasty-hunit
+                , time
+                , mtl
                 , achille
