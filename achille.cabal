@@ -27,9 +27,10 @@ library
                    , Achille.Writable
                    , Achille.Timestamped
                    , Achille.Internal
+                   , Achille.Internal.IO
                    , Achille.Recipe
                    , Achille.Task
-  build-depends:     base == 4.*
+  build-depends:     base >= 4.11 && < 5
                    , process
                    , filepath
                    , directory
@@ -40,13 +41,13 @@ library
                    , dates
                    , time
                    , data-default
+                   , blaze-html
                    , optparse-applicative
 
   if flag(pandoc)
     exposed-modules: Achille.Recipe.Pandoc
     build-depends:   pandoc
                    , pandoc-types
-                   , blaze-html
                    , blaze-markup
 
   if flag(frontmatter)
@@ -54,3 +55,12 @@ library
     build-depends:   frontmatter
                    , aeson
                    , yaml
+
+test-suite test-achille
+  type:           exitcode-stdio-1.0
+  main-is:        Main.hs
+  hs-source-dirs: test
+  build-depends:  base >= 4.11 && < 5
+                , tasty
+                , tasty-hunit
+                , achille
