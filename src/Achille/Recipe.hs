@@ -22,7 +22,7 @@ module Achille.Recipe
 
 import Prelude hiding (read)
 
-import Control.Monad.IO.Class  (liftIO)
+import Control.Monad.IO.Class  (MonadIO, liftIO)
 import Data.Binary             (Binary, encodeFile)
 import Data.Functor            (void)
 import Data.Text               (Text, pack)
@@ -66,39 +66,48 @@ safeCopyFile from to = ensureDirExists to >> Directory.copyFile from to
 -------------------------------------
 
 -- | Recipe returning its input.
-getInput :: Recipe a a
+getInput :: Applicative m
+         => Recipe m a a
 getInput = nonCached $ pure . inputValue
 
 -- | Recipe for retrieving the current directory
-getCurrentDir :: Recipe a FilePath
+getCurrentDir :: Applicative m
+              => Recipe m a FilePath
 getCurrentDir = nonCached (pure . Internal.currentDir)
 
 -- | Recipe retrieving the contents of the input file as text
-readText :: Recipe FilePath Text
-readText = nonCached \Context{..} -> Text.readFile (inputDir </> currentDir </> inputValue)
+readText :: MonadIO m
+         => Recipe m FilePath Text
+readText = nonCached \Context{..} ->
+    liftIO $ Text.readFile (inputDir </> currentDir </> inputValue)
 
 -- | Recipe for saving a value to the location given as input.
 --   Returns the input filepath as is.
-saveFile :: Writable a => a -> Recipe FilePath FilePath
+saveFile :: (MonadIO m, Writable a)
+         => a -> Recipe m FilePath FilePath
 saveFile = saveFileAs id
 
 -- | Recipe for saving a value to a file, using the path modifier applied to the input filepath.
 --   Returns the path of the output file.
-saveFileAs :: Writable a => (FilePath -> FilePath) -> a -> Recipe FilePath FilePath
+saveFileAs :: (MonadIO m, Writable a)
+           => (FilePath -> FilePath) -> a -> Recipe m FilePath FilePath
 saveFileAs mod x = flip write x =<< mod <$> getInput
 
 -- | Recipe for copying an input file to the same location in the output dir.
-copyFile :: Recipe FilePath FilePath
+copyFile :: MonadIO m
+         => Recipe m FilePath FilePath
 copyFile = copyFileAs id
 
 -- | Recipe for copying an input file to the output dir, using the path modifier.
-copyFileAs :: (FilePath -> FilePath) -> Recipe FilePath FilePath
+copyFileAs :: MonadIO m
+           => (FilePath -> FilePath) -> Recipe m FilePath FilePath
 copyFileAs mod = getInput >>= \from -> copy from (mod from)
 
 -- | Recipe for copying a file to a given destination.
 --   Returns the output filepath.
-copy :: FilePath -> FilePath -> Recipe a FilePath
-copy from to = nonCached \Context{..} -> do
+copy :: MonadIO m
+     => FilePath -> FilePath -> Recipe m a FilePath
+copy from to = nonCached \Context{..} -> liftIO do
     safeCopyFile (inputDir  </> currentDir </> from)
                  (outputDir </> currentDir </> to)
     putStrLn (color Blue $ (currentDir </> from) <> " → " <> (currentDir </> to))
@@ -106,15 +115,16 @@ copy from to = nonCached \Context{..} -> do
 
 -- | Recipe for writing to a an output file.
 --   Returns the output filepath.
-write :: Writable b => FilePath -> b -> Recipe a FilePath
-write to x = nonCached \Context{..} -> do
+write :: MonadIO m
+      => Writable b => FilePath -> b -> Recipe m a FilePath
+write to x = nonCached \Context{..} -> liftIO do
     ensureDirExists (outputDir </> currentDir </> to)
     Writable.write (outputDir  </> currentDir </> to) x
     putStrLn (color Blue $ "writing " <> (currentDir </> to))
     pure to
 
 -- | Make a recipe out of a task. The input will simply be discarded.
-task :: Task b -> Recipe a b
+task :: Task m b -> Recipe m a b
 task (Recipe r) = Recipe (r . void)
 
 
@@ -124,21 +134,24 @@ task (Recipe r) = Recipe (r . void)
 ------------------------------
 
 -- | Recipe for printing a value to the console.
-debug :: Show b => b -> Recipe a ()
+debug :: MonadIO m
+      => Show b => b -> Recipe m a ()
 debug = liftIO . putStrLn . show
 
-callCommand :: String -> Recipe a ()
+callCommand :: MonadIO m
+            => String -> Recipe m a ()
 callCommand = liftIO . Process.callCommand
 
-runCommandWith :: (FilePath -> FilePath)
+runCommandWith :: MonadIO m
+               => (FilePath -> FilePath)
                -> (FilePath -> FilePath -> String)
-               -> Recipe FilePath FilePath
-runCommandWith mod cmd = nonCached \Context{..} -> do
+               -> Recipe m FilePath FilePath
+runCommandWith mod cmd = nonCached \Context{..} -> liftIO do
     let p' = mod inputValue
     Process.callCommand $ cmd (inputDir </> currentDir </> inputValue)
                               (outputDir </> currentDir </> p')
     pure p'
 
 
-toTimestamped :: FilePath -> Recipe a (Timestamped FilePath)
-toTimestamped = liftIO . pure . timestamped
+toTimestamped :: Monad m => FilePath -> Recipe m a (Timestamped FilePath)
+toTimestamped = pure . timestamped

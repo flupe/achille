@@ -75,7 +75,7 @@ fromContext c =
 
 
 -- | Description of a computation producing a value b given some input a.
-newtype Recipe a b = Recipe (Context a -> IO (b, Cache))
+newtype Recipe m a b = Recipe (Context a -> m (b, Cache))
 
 
 -- | Context in which a recipe is being executed.
@@ -92,23 +92,23 @@ data Context a = Context
 
 
 -- | A task is a recipe with no input
-type Task = Recipe ()
+type Task m = Recipe m ()
 
 
 -- | Make a recipe out of a computation that is known not to be cached.
-nonCached :: (Context a -> IO b) -> Recipe a b
+nonCached :: Functor m => (Context a -> m b) -> Recipe m a b
 nonCached f = Recipe \c -> (, emptyCache) <$> f c {cache = emptyCache}
 
 
-runRecipe :: Recipe a b -> Context a -> IO (b, Cache)
+runRecipe :: Recipe m a b -> Context a -> m (b, Cache)
 runRecipe (Recipe r) = r
 
 
-instance Functor (Recipe a) where
+instance Functor m => Functor (Recipe m a) where
     fmap f (Recipe r) = Recipe \c -> first f <$> r c
 
 
-instance Applicative (Recipe a) where
+instance Monad m => Applicative (Recipe m a) where
     pure  = Recipe . const . pure . (, emptyCache)
     (<*>) = ap
 
@@ -117,7 +117,7 @@ splitCache :: Cache -> (Cache, Cache)
 splitCache = fromMaybe (emptyCache, emptyCache) . fromCache
 
 
-instance Monad (Recipe a) where
+instance Monad m => Monad (Recipe m a) where
     Recipe r >>= f = Recipe \c -> do
         let (cr, cf) = splitCache (cache c)
         (x, cr') <- r c   {cache = cr}
@@ -132,17 +132,17 @@ instance Monad (Recipe a) where
         pure (y, toCache (cr', cs'))
 
 
-instance MonadIO (Recipe a) where
-    liftIO = nonCached . const
+instance MonadIO m => MonadIO (Recipe m a) where
+    liftIO = nonCached . const . liftIO
 
 
-instance MonadFail (Recipe a) where
+instance MonadFail m => MonadFail (Recipe m a) where
     fail = Recipe . const . fail
 
 
-instance Semigroup b => Semigroup (Recipe a b) where
+instance (Monad m, Semigroup b) => Semigroup (Recipe m a b) where
     x <> y = liftA2 (<>) x y
 
 
-instance Monoid b => Monoid (Recipe a b) where
+instance (Monad m, Monoid b) => Monoid (Recipe m a b) where
     mempty = pure mempty

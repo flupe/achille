@@ -12,15 +12,16 @@ module Achille.Task
     ) where
 
 
-import Data.Functor          ((<&>))
-import Control.Monad         (forM)
-import Data.Binary           (Binary)
-import System.FilePath       (FilePath, (</>), takeDirectory, takeFileName)
-import System.FilePath.Glob  (Pattern)
+import Data.Functor            ((<&>))
+import Control.Monad           (forM)
+import Control.Monad.IO.Class  (MonadIO, liftIO)
+import Data.Binary             (Binary)
+import System.FilePath         (FilePath, (</>), takeDirectory, takeFileName)
+import System.FilePath.Glob    (Pattern)
 import System.Directory
-import System.IO             (openBinaryFile, hClose, IOMode(ReadMode))
-import Data.Time.Clock       (UTCTime(..))
-import Data.Time.Calendar    (Day(..))
+import System.IO               (openBinaryFile, hClose, IOMode(ReadMode))
+import Data.Time.Clock         (UTCTime(..))
+import Data.Time.Calendar      (Day(..))
 
 import qualified System.FilePath.Glob as Glob
 import qualified Data.ByteString.Lazy as ByteString
@@ -44,11 +45,12 @@ shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 -- | Run a recipe on every filepath matching a given pattern.
 --   The results are cached and the recipe only recomputes
 --   when the underlying file has changed since last run.
-match :: Binary a => Pattern -> Recipe FilePath a -> Recipe c [a]
-match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
+match :: (MonadIO m, Binary a)
+      => Pattern -> Recipe m FilePath a -> Recipe m c [a]
+match p (Recipe r :: Recipe m FilePath b) = Recipe \ctx -> do
     let (cached, c'@Context{..}) = fromContext ctx
-    paths <- withCurrentDirectory (inputDir </> currentDir) $
-                Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
+    paths <- liftIO $ withCurrentDirectory (inputDir </> currentDir) $
+                      Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
     case cached :: Maybe (Match b) of
         Nothing -> do
             result <- forM paths \p ->
@@ -60,7 +62,7 @@ match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
             result <- forM paths \p ->
                 case lookup p cached of
                     Just (v, cache) -> (p,) <$> do
-                        tfile  <- getModificationTime (inputDir </> currentDir </> p)
+                        tfile  <- liftIO $ getModificationTime (inputDir </> currentDir </> p)
                         if timestamp < tfile || shouldForce ctx (inputDir </> currentDir </> p) then
                             r c' {inputValue = p, cache = cache}
                         else pure (v, cache)
@@ -72,11 +74,11 @@ match p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
 --   and discard the result.
 --   Filepaths are cached and the recipe only recomputes when
 --   the underlying file has changed since last run.
-match_ :: Pattern -> Recipe FilePath a -> Task ()
+match_ :: MonadIO m => Pattern -> Recipe m FilePath a -> Task m ()
 match_ p (Recipe r) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
-    paths <- withCurrentDirectory (inputDir </> currentDir) $
-                Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
+    paths <- liftIO $ withCurrentDirectory (inputDir </> currentDir) $
+                      Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
     case result :: Maybe MatchVoid of
         Nothing -> do
             result <- forM paths \p ->
@@ -88,7 +90,7 @@ match_ p (Recipe r) = Recipe \ctx -> do
             result <- forM paths \p ->
                 case lookup p cached of
                     Just cache -> (p,) <$> do
-                        tfile <- getModificationTime (inputDir </> currentDir </> p)
+                        tfile <- liftIO $ getModificationTime (inputDir </> currentDir </> p)
                         if timestamp < tfile || shouldForce ctx (inputDir </> currentDir </> p) then
                             snd <$> r c' {inputValue = p, cache = cache}
                         else pure cache
@@ -99,11 +101,12 @@ match_ p (Recipe r) = Recipe \ctx -> do
 -- | For every file matching the pattern, run a recipe with the
 --   file as input and with the file's parent directory as current working directory.
 --   The underlying recipe will be run regardless of whether the file was modified.
-matchDir :: Pattern -> Recipe FilePath a -> Recipe c [a]
-matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
+matchDir :: MonadIO m
+         => Pattern -> Recipe m FilePath a -> Recipe m c [a]
+matchDir p (Recipe r) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
-    paths <- withCurrentDirectory (inputDir </> currentDir) $
-                Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
+    paths <- liftIO $ withCurrentDirectory (inputDir </> currentDir) $
+                      Glob.globDir1 p "" >>= mapM makeRelativeToCurrentDirectory
     case result :: Maybe MatchDir of
         Nothing -> do
             result <- forM paths \p ->
@@ -123,8 +126,9 @@ matchDir p (Recipe r :: Recipe FilePath b) = Recipe \ctx -> do
             return (map fst result, toCache (zip paths (map snd result) :: MatchDir))
 
 
-with :: (Binary a, Eq a, Binary b) => a -> Recipe c b -> Recipe c b
-with (x :: a) (Recipe r :: Recipe c d) = Recipe \ctx ->
+with :: (Applicative m, Binary a, Eq a, Binary b)
+     => a -> Recipe m c b -> Recipe m c b
+with (x :: a) (Recipe r :: Recipe m1 c d) = Recipe \ctx ->
     let (result, c'@Context{..}) = fromContext ctx 
     in case result :: Maybe (With a d) of
         Nothing ->
@@ -135,8 +139,9 @@ with (x :: a) (Recipe r :: Recipe c d) = Recipe \ctx ->
             else r c' <&> \v -> (fst v, toCache ((x, v) :: With a d))
 
 
-watch :: (Binary a, Eq a) => a -> Recipe c b -> Recipe c b
-watch (x :: a) (Recipe r :: Recipe c b) = Recipe \ctx ->
+watch :: (Functor m, Binary a, Eq a)
+      => a -> Recipe m c b -> Recipe m c b
+watch (x :: a) (Recipe r :: Recipe m c b) = Recipe \ctx ->
     let (result, c'@Context{..}) = fromContext ctx
     in case result :: Maybe (Watch a b) of
         Nothing ->
@@ -149,14 +154,15 @@ watch (x :: a) (Recipe r :: Recipe c b) = Recipe \ctx ->
 
 -- | Run a task using the provided config and a list of dirty files.
 --   This takes care of loading the existing cache and updating it.
-runTask :: [Glob.Pattern]  -- ^ Files for which we force recompilation
+runTask :: MonadIO m
+        => [Glob.Pattern]  -- ^ Files for which we force recompilation
         -> Config          -- ^ The config
-        -> Task a          -- ^ The task
-        -> IO a
+        -> Task m a        -- ^ The task
+        -> m a
 runTask force config (Recipe r) = do
-    cacheExists <- doesFileExist (Config.cacheFile config)
+    cacheExists <- liftIO $ doesFileExist (Config.cacheFile config)
     timestamp   <- if cacheExists then
-                        getModificationTime (Config.cacheFile config)
+                        liftIO $ getModificationTime (Config.cacheFile config)
                    else pure (UTCTime (ModifiedJulianDay 0) 0)
     let ctx = Context (Config.contentDir config)
                       (Config.outputDir config)
@@ -166,11 +172,11 @@ runTask force config (Recipe r) = do
                       NoMust
     (value, cache') <-
         if cacheExists then do
-            handle <- openBinaryFile (Config.cacheFile config) ReadMode
-            cache  <- ByteString.hGetContents handle
-            ret    <- r (ctx cache ())
-            hClose handle
-            pure ret
+            handle <- liftIO $ openBinaryFile (Config.cacheFile config) ReadMode
+            cache  <- liftIO $ ByteString.hGetContents handle
+            let ret = r (ctx cache ())
+            liftIO $ hClose handle
+            ret
         else r (ctx emptyCache ())
-    ByteString.writeFile (Config.cacheFile config) cache'
+    liftIO $ ByteString.writeFile (Config.cacheFile config) cache'
     pure value

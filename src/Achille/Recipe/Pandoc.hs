@@ -11,6 +11,7 @@ module Achille.Recipe.Pandoc
     , compilePandocWith
     ) where
 
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.Binary      (Binary, encodeFile)
 import Data.Functor     (void)
 import Data.Text        (Text, pack)
@@ -38,53 +39,63 @@ import           Achille.Recipe
 
 
 -- | Recipe for loading a pandoc document
-readPandoc :: Recipe FilePath Pandoc
+readPandoc :: MonadIO m
+           => Recipe m FilePath Pandoc
 readPandoc = readPandocWith def
 
 -- | Recipe for loading a pandoc document using a given reader config
-readPandocWith :: ReaderOptions -> Recipe FilePath Pandoc
+readPandocWith :: MonadIO m
+               => ReaderOptions -> Recipe m FilePath Pandoc
 readPandocWith ropts = nonCached \Context{..}  ->
     let ext = drop 1 $ takeExtension inputValue
         Just reader = lookup (pack ext) readers
     in case reader of
-        ByteStringReader f ->
+        ByteStringReader f -> liftIO $ 
             LazyByteString.readFile (inputDir </> currentDir </> inputValue)
                 >>= runIOorExplode <$> f ropts
-        TextReader f ->
+        TextReader f -> liftIO $
             Text.readFile (inputDir </> currentDir </> inputValue)
                 >>= runIOorExplode <$> f ropts
 
 -- | Recipe for loading a pandoc document and a frontmatter header.
-readPandocMetadata :: FromJSON a => Recipe FilePath (a, Pandoc)
+readPandocMetadata :: (MonadIO m, FromJSON a)
+                   => Recipe m FilePath (a, Pandoc)
 readPandocMetadata = readPandocMetadataWith def
 
 -- | Recipe for loading a pandoc document using a given reader config
-readPandocMetadataWith :: FromJSON a => ReaderOptions -> Recipe FilePath (a, Pandoc)
+readPandocMetadataWith :: (MonadIO m, FromJSON a)
+                       => ReaderOptions -> Recipe m FilePath (a, Pandoc)
 readPandocMetadataWith ropts = nonCached \Context{..} -> do
     let ext         = drop 1 $ takeExtension inputValue
         Just reader = lookup (pack ext) readers
-    contents <- ByteString.readFile (inputDir </> currentDir </> inputValue)
+    contents <- liftIO $ ByteString.readFile (inputDir </> currentDir </> inputValue)
     (meta, remaining) <-
             case parseYamlFrontmatter contents of
                 Done i a -> pure (a, i)
                 _        -> fail $ "error while loading meta of " <> inputValue
     (meta,) <$> case reader of
-        ByteStringReader f -> runIOorExplode $ f ropts (LazyByteString.fromStrict remaining)
-        TextReader f -> runIOorExplode $ f ropts (decodeUtf8 remaining)
+        ByteStringReader f -> liftIO $
+            runIOorExplode $ f ropts (LazyByteString.fromStrict remaining)
+        TextReader f -> liftIO $
+            runIOorExplode $ f ropts (decodeUtf8 remaining)
 
 -- | Recipe to convert a Pandoc document to HTML.
-renderPandoc :: Pandoc -> Recipe a Html
+renderPandoc :: MonadIO m
+             => Pandoc -> Recipe m a Html
 renderPandoc = renderPandocWith def 
 
 -- | Recipe to convert a Pandoc document to HTML using specified writer options.
-renderPandocWith :: WriterOptions -> Pandoc -> Recipe a Html
+renderPandocWith :: MonadIO m
+                 => WriterOptions -> Pandoc -> Recipe m a Html
 renderPandocWith wopts = liftIO . runIOorExplode <$> writeHtml5 wopts
 
 -- | Recipe to load and convert a Pandoc document to HTML.
-compilePandoc :: Recipe FilePath Html
+compilePandoc :: MonadIO m
+              => Recipe m FilePath Html
 compilePandoc = readPandoc >>= renderPandoc
 
 -- | Recipe to load and convert a Pandoc document to HTML.
-compilePandocWith :: ReaderOptions -> WriterOptions -> Recipe FilePath Html
+compilePandocWith :: MonadIO m
+                  => ReaderOptions -> WriterOptions -> Recipe m FilePath Html
 compilePandocWith ropts wopts =
     readPandocWith ropts >>= renderPandocWith wopts
