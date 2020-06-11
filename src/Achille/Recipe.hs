@@ -1,41 +1,42 @@
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE GADTs           #-}
 
 module Achille.Recipe
     ( Recipe
-    , getInput
     , liftIO
+    , getInput
+    , getCurrentDir
     , readText
-    , save
-    , saveTo
+    , saveFile
+    , saveFileAs
+    , copyFile
+    , copyFileAs
     , copy
-    , copyTo
     , write
     , task
-    , currentDir
     , debug
     , callCommand
     , runCommandWith
-    , logInput
-    , logInputWith
     , toTimestamped
     ) where
 
+
 import Prelude hiding (read)
 
-import Data.Binary        (Binary, encodeFile)
-import Data.Functor       (void)
-import Data.Text          (Text, pack)
-import Data.Text.Encoding (decodeUtf8)
-import System.FilePath    ((</>), takeDirectory)
-import System.Directory   (copyFile, createDirectoryIfMissing, withCurrentDirectory)
-import Text.Blaze.Html    (Html)
+import Control.Monad.IO.Class  (liftIO)
+import Data.Binary             (Binary, encodeFile)
+import Data.Functor            (void)
+import Data.Text               (Text, pack)
+import Data.Text.Encoding      (decodeUtf8)
+import System.FilePath         ((</>), takeDirectory)
+import System.Directory        (createDirectoryIfMissing, withCurrentDirectory)
+import Text.Blaze.Html         (Html)
 
 import qualified Data.Text.IO                     as Text
 import qualified System.FilePath.Glob             as Glob
 import qualified Data.ByteString.Lazy             as ByteString
 import qualified Text.Blaze.Html.Renderer.String  as BlazeString
 import qualified System.FilePath                  as Path
+import qualified System.Directory                 as Directory
 import qualified System.Process                   as Process
 
 import           Achille.Config
@@ -54,71 +55,68 @@ color c x = "\x1b[" <> start <> x <> "\x1b[0m"
                       Red  -> "31m"
                       Blue -> "34m"
 
-
 ensureDirExists :: FilePath -> IO ()
 ensureDirExists = createDirectoryIfMissing True . takeDirectory
 
 safeCopyFile :: FilePath -> FilePath -> IO ()
-safeCopyFile from to = ensureDirExists to >> copyFile from to
-                    >> putStrLn (color Blue $ from <> " → " <> to)
+safeCopyFile from to = ensureDirExists to >> Directory.copyFile from to
 
-------------------------------
--- Recipe building blocks
-------------------------------
+-------------------------------------
+-- Recipe building blocks (uncached)
+-------------------------------------
 
 -- | Recipe returning its input.
 getInput :: Recipe a a
 getInput = nonCached $ pure . inputValue
 
--- | Recipe running an IO action.
-liftIO :: IO b -> Recipe a b
-liftIO x = nonCached $ const x
+-- | Recipe for retrieving the current directory
+getCurrentDir :: Recipe a FilePath
+getCurrentDir = nonCached (pure . Internal.currentDir)
 
--- | Recipe retrieving the text of the input file.
+-- | Recipe retrieving the contents of the input file as text
 readText :: Recipe FilePath Text
 readText = nonCached \Context{..} -> Text.readFile (inputDir </> currentDir </> inputValue)
 
--- | Recipe for saving the current value to the same location as the input file.
-save :: Writable a => a -> Recipe FilePath FilePath
-save = saveTo id
+-- | Recipe for saving a value to the location given as input.
+--   Returns the input filepath as is.
+saveFile :: Writable a => a -> Recipe FilePath FilePath
+saveFile = saveFileAs id
 
--- | Recipe for saving the current value to the output dir,
---   using the path modifier.
-saveTo :: Writable a => (FilePath -> FilePath) -> a -> Recipe FilePath FilePath
-saveTo mod x = nonCached \Context{..} -> do
-    let p'  = mod inputValue
-    let out = outputDir </> currentDir </> p'
-    ensureDirExists out
-    Writable.write out x
-    pure p'
+-- | Recipe for saving a value to a file, using the path modifier applied to the input filepath.
+--   Returns the path of the output file.
+saveFileAs :: Writable a => (FilePath -> FilePath) -> a -> Recipe FilePath FilePath
+saveFileAs mod x = flip write x =<< mod <$> getInput
 
 -- | Recipe for copying an input file to the same location in the output dir.
-copy :: Recipe FilePath FilePath
-copy = copyTo id
+copyFile :: Recipe FilePath FilePath
+copyFile = copyFileAs id
 
--- | Recipe for copying an input file in the output dir,
---   using the path modifier.
-copyTo :: (FilePath -> FilePath) -> Recipe FilePath FilePath
-copyTo mod = nonCached \Context{..} ->
-    safeCopyFile (inputDir </> currentDir </> inputValue)
-                 (outputDir </> currentDir </> mod inputValue)
-        >> pure (mod inputValue)
+-- | Recipe for copying an input file to the output dir, using the path modifier.
+copyFileAs :: (FilePath -> FilePath) -> Recipe FilePath FilePath
+copyFileAs mod = getInput >>= \from -> copy from (mod from)
 
--- | Recipe for writing to a file
+-- | Recipe for copying a file to a given destination.
+--   Returns the output filepath.
+copy :: FilePath -> FilePath -> Recipe a FilePath
+copy from to = nonCached \Context{..} -> do
+    safeCopyFile (inputDir  </> currentDir </> from)
+                 (outputDir </> currentDir </> to)
+    putStrLn (color Blue $ (currentDir </> from) <> " → " <> (currentDir </> to))
+    pure to
+
+-- | Recipe for writing to a an output file.
+--   Returns the output filepath.
 write :: Writable b => FilePath -> b -> Recipe a FilePath
-write p x = nonCached \Context{..} ->
-    ensureDirExists (outputDir </> currentDir </> p)
-        >> Writable.write (outputDir </> currentDir </> p) x
-        >> putStrLn (color Blue $ "writing " <> (outputDir </> currentDir </> p))
-        >> pure p
+write to x = nonCached \Context{..} -> do
+    ensureDirExists (outputDir </> currentDir </> to)
+    Writable.write (outputDir  </> currentDir </> to) x
+    putStrLn (color Blue $ "writing " <> (currentDir </> to))
+    pure to
 
 -- | Make a recipe out of a task. The input will simply be discarded.
 task :: Task b -> Recipe a b
 task (Recipe r) = Recipe (r . void)
 
-
-currentDir :: Recipe a FilePath
-currentDir = nonCached (pure . Internal.currentDir)
 
 
 ------------------------------
@@ -141,11 +139,6 @@ runCommandWith mod cmd = nonCached \Context{..} -> do
                               (outputDir </> currentDir </> p')
     pure p'
 
-logInput :: Show a => Recipe a ()
-logInput = getInput >>= debug
-
-logInputWith :: (Show b) => (a -> b) -> Recipe a ()
-logInputWith f = (f <$> getInput) >>= debug
 
 toTimestamped :: FilePath -> Recipe a (Timestamped FilePath)
 toTimestamped = liftIO . pure . timestamped

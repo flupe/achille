@@ -14,16 +14,19 @@ module Achille.Internal
     , nonCached
     ) where
 
+import Prelude hiding (fail, liftIO)
 
-import Data.Binary           (Binary, encode, decodeOrFail)
-import Data.Maybe            (fromMaybe)
-import Data.Functor          (void)
-import Control.Monad         (liftM2)
-import Control.Applicative   (liftA2)
-import Data.Time.Clock       (UTCTime)
-import Data.ByteString.Lazy  (ByteString, empty)
-import Data.Bifunctor        (first, second)
-import System.FilePath.Glob  (Pattern)
+import Data.Binary             (Binary, encode, decodeOrFail)
+import Data.Maybe              (fromMaybe)
+import Data.Functor            (void)
+import Control.Monad           (ap)
+import Control.Monad.IO.Class  (MonadIO, liftIO)
+import Control.Monad.Fail      (MonadFail, fail)
+import Control.Applicative     (liftA2)
+import Data.Time.Clock         (UTCTime)
+import Data.ByteString.Lazy    (ByteString, empty)
+import Data.Bifunctor          (first, second)
+import System.FilePath.Glob    (Pattern)
 
 
 -- | A cache is a lazy bytestring.
@@ -92,14 +95,22 @@ data Context a = Context
 type Task = Recipe ()
 
 
--- our recipes are a little bit of everything, that's good
+-- | Make a recipe out of a computation that is known not to be cached.
+nonCached :: (Context a -> IO b) -> Recipe a b
+nonCached f = Recipe \c -> (, emptyCache) <$> f c {cache = emptyCache}
+
+
+runRecipe :: Recipe a b -> Context a -> IO (b, Cache)
+runRecipe (Recipe r) = r
+
+
 instance Functor (Recipe a) where
     fmap f (Recipe r) = Recipe \c -> first f <$> r c
 
 
 instance Applicative (Recipe a) where
-    pure = Recipe . const . pure . (, emptyCache)
-    liftA2 = liftM2
+    pure  = Recipe . const . pure . (, emptyCache)
+    (<*>) = ap
 
 
 splitCache :: Cache -> (Cache, Cache)
@@ -121,10 +132,17 @@ instance Monad (Recipe a) where
         pure (y, toCache (cr', cs'))
 
 
-runRecipe :: Recipe a b -> Context a -> IO (b, Cache)
-runRecipe (Recipe r) = r
+instance MonadIO (Recipe a) where
+    liftIO = nonCached . const
 
 
--- | Make a recipe out of a computation that is known not to be cached.
-nonCached :: (Context a -> IO b) -> Recipe a b
-nonCached f = Recipe \c -> (, emptyCache) <$> f c {cache = emptyCache}
+instance MonadFail (Recipe a) where
+    fail = Recipe . const . fail
+
+
+instance Semigroup b => Semigroup (Recipe a b) where
+    x <> y = liftA2 (<>) x y
+
+
+instance Monoid b => Monoid (Recipe a b) where
+    mempty = pure mempty

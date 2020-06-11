@@ -47,7 +47,7 @@ instance IsTimestamped (Timestamped a) where
 instance IsTimestamped FilePath where
     timestamp p = case parseDateFormat "YYYY-MM-DD" (takeFileName p) of
       Right d -> d
-      Left _  -> mempty
+      Left _  -> DateTime 0 1 0 0 0 0
 
 
 timestamped :: IsTimestamped a => a -> Timestamped a
