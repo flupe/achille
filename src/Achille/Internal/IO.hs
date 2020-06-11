@@ -9,13 +9,15 @@ module Achille.Internal.IO
     , log
     , glob
     , getModificationTime
+    , fail
     ) where
 
 import Prelude as Prelude hiding (log, readFile, writeFile)
 
-import Data.Text        (Text)
-import System.FilePath  (FilePath)
-import Data.Time.Clock  (UTCTime)
+import Data.Text          (Text)
+import System.FilePath    (FilePath)
+import Data.Time.Clock    (UTCTime)
+import Control.Monad.Fail (MonadFail)
 
 import qualified System.Directory     as Directory
 import qualified System.FilePath      as FilePath
@@ -27,7 +29,7 @@ import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as LBS
 
 
-class Monad m => AchilleIO m where
+class (Monad m, MonadFail m) => AchilleIO m where
     readFile            :: FilePath -> m BS.ByteString
     readFileLazy        :: FilePath -> m LBS.ByteString
     copyFile            :: FilePath -> FilePath       -> m ()

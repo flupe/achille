@@ -1,10 +1,13 @@
 {-# LANGUAGE RecordWildCards     #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE BangPatterns        #-}
+{-# LANGUAGE LambdaCase          #-}
 
 module Achille.Task
     ( Task
     , match
     , match_
+    , matchFile
     , matchDir
     , with
     , watch
@@ -38,7 +41,7 @@ type MatchVoid  = [(FilePath, Cache)]
 type Match b    = [(FilePath, (b, Cache))]
 type MatchDir   = [(FilePath, Cache)]
 type With a b   = (a, (b, Cache))
-type Watch a b  = (a, Cache)
+type Watch a    = (a, Cache)
 
 
 shouldForce :: Context a -> FilePath -> Bool
@@ -98,6 +101,29 @@ match_ pattern (Recipe r) = Recipe \ctx -> do
             return ((), toCache (result :: MatchVoid))
 
 
+matchFile :: (AchilleIO m, Binary a)
+          => Pattern -> Recipe m FilePath a -> Recipe m b a
+matchFile p (Recipe r :: Recipe m FilePath a) = Recipe \ctx@Context{..} ->
+    AchilleIO.glob (inputDir </> currentDir) p >>= \case
+        [] -> AchilleIO.fail $ unwords
+                  [ "No file was found matching pattern"
+                  , Glob.decompile p
+                  , "inside directory"
+                  , currentDir
+                  ]
+        (p:xs) ->
+            let (result, c'@Context{..}) = fromContext ctx
+            in case result :: Maybe (Watch a) of
+                Nothing -> r c' {cache = emptyCache, inputValue = p}
+                                    <&> \v -> (fst v, toCache (v :: Watch a))
+                Just (x, cache) -> do
+                    tfile  <- AchilleIO.getModificationTime (inputDir </> currentDir </> p)
+                    if timestamp < tfile || shouldForce ctx (inputDir </> currentDir </> p) then
+                        r c' {cache = cache, inputValue = p}
+                            <&> \v -> (fst v, toCache (v :: Watch a))
+                    else pure (x, toCache ((x, cache) :: Watch a))
+
+
 -- | For every file matching the pattern, run a recipe with the
 --   file as input and with the file's parent directory as current working directory.
 --   The underlying recipe will be run regardless of whether the file was modified.
@@ -142,13 +168,13 @@ watch :: (Functor m, Binary a, Eq a)
       => a -> Recipe m c b -> Recipe m c b
 watch (x :: a) (Recipe r :: Recipe m c b) = Recipe \ctx ->
     let (result, c'@Context{..}) = fromContext ctx
-    in case result :: Maybe (Watch a b) of
+    in case result :: Maybe (Watch a) of
         Nothing ->
             r c' {cache = emptyCache}
-                <&> \v -> (fst v, toCache ((x, snd v) :: Watch a b))
+                <&> \v -> (fst v, toCache ((x, snd v) :: Watch a))
         Just (x', cache) ->
             r c' {mustRun = if x /= x' then MustRunOne else NoMust, cache = cache}
-                <&> \v -> (fst v, toCache ((x, snd v) :: Watch a b))
+                <&> \v -> (fst v, toCache ((x, snd v) :: Watch a))
 
 
 -- | Run a task using the provided config and a list of dirty files.
@@ -169,13 +195,13 @@ runTask force config (Recipe r) = do
                       timestamp
                       force
                       NoMust
-    (value, cache') <-
+    (v, cache') <-
         if cacheExists then do
             handle <- liftIO $ openBinaryFile (Config.cacheFile config) ReadMode
             cache  <- liftIO $ ByteString.hGetContents handle
-            let ret = r (ctx cache ())
+            (value, cache') <- r (ctx cache ())
             liftIO $ hClose handle
-            ret
-        else r (ctx emptyCache ())
+            pure (value, cache')
+        else do r (ctx emptyCache ())
     liftIO $ ByteString.writeFile (Config.cacheFile config) cache'
-    pure value
+    pure v

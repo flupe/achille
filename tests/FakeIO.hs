@@ -6,7 +6,8 @@ module FakeIO where
 import Data.Time.Clock  (UTCTime)
 import Data.Map.Strict as M
 import Data.Maybe
-import Data.Bifunctor (bimap)
+import Data.Bifunctor     (bimap)
+import Control.Monad.Fail (MonadFail, fail)
 
 import qualified System.Directory     as Directory
 import qualified System.FilePath      as FilePath
@@ -32,6 +33,7 @@ data FakeIO a where
     Log                 :: String   -> FakeIO ()
     Glob                :: FilePath -> Glob.Pattern -> FakeIO [FilePath]
     GetModificationTime :: FilePath -> FakeIO UTCTime
+    Fail                :: String -> FakeIO a
 
     SeqAp               :: FakeIO (a -> b) -> FakeIO a -> FakeIO b
     Fmap                :: (a -> b) -> FakeIO a -> FakeIO b
@@ -49,6 +51,9 @@ instance Applicative FakeIO where
 instance Monad FakeIO where
     (>>=) = Bind
 
+instance MonadFail FakeIO where
+    fail = Fail
+
 
 instance AchilleIO FakeIO where
     readFile            = ReadFile
@@ -63,12 +68,13 @@ instance AchilleIO FakeIO where
 
 
 data FakeIOActions
-    = WrittenFile          FilePath
-    | WrittenFileLazy      FilePath
+    = WrittenFile          FilePath BS.ByteString
+    | WrittenFileLazy      FilePath LBS.ByteString
     | HasReadFile          FilePath
     | HasReadFileLazy      FilePath
     | CopiedFile FilePath  FilePath
     | CalledCommand        String
+    | Failed               String
     deriving (Eq, Show)
 
 
@@ -84,45 +90,48 @@ getBS :: FilePath -> FileSystem -> BS.ByteString
 getBS p fs = fromMaybe BS.empty (snd <$> M.lookup p fs)
 
 retrieveFakeIOActions :: FakeIO (a, Cache)    -- the fake IO computation
-                      -> FileSystem  -- the underlying input FS
-                      -> (a, [FakeIOActions])
-retrieveFakeIOActions t fs = bimap fst reverse $ runState (retrieve t) []
+                      -> FileSystem           -- the underlying input FS
+                      -> (Maybe a, [FakeIOActions])
+retrieveFakeIOActions t fs = bimap (fmap fst) reverse $ runState (retrieve t) []
     where
-        retrieve :: FakeIO a -> State [FakeIOActions] a
+        retrieve :: FakeIO a -> State [FakeIOActions] (Maybe a)
         retrieve (ReadFile key) = do
             modify (HasReadFile key :)
-            pure (getBS key fs)
+            pure (Just $ getBS key fs)
 
         retrieve (ReadFileLazy key) = do
             modify (HasReadFileLazy key :)
-            pure (LBS.fromStrict $ getBS key fs)
+            pure (Just $ LBS.fromStrict $ getBS key fs)
 
-        retrieve (CopyFile from to)  = modify (CopiedFile from to :)
-        retrieve (WriteFile p _)     = modify (WrittenFile p :)
-        retrieve (WriteFileLazy p _) = modify (WrittenFile p :)
-        retrieve (CallCommand cmd)   = modify (CalledCommand cmd :)
-        retrieve (Log str)           = pure ()
+        retrieve (CopyFile from to)  = Just <$> modify (CopiedFile from to :)
+        retrieve (WriteFile p c)     = Just <$> modify (WrittenFile p c :)
+        retrieve (WriteFileLazy p c) = Just <$> modify (WrittenFileLazy p c :)
+        retrieve (CallCommand cmd)   = Just <$> modify (CalledCommand cmd :)
+        retrieve (Log str)           = pure $ Just ()
         retrieve (Glob dir p)        = undefined
-        retrieve (GetModificationTime p) = pure $ getMTime p fs
+        retrieve (GetModificationTime p) = pure $ Just (getMTime p fs)
 
         retrieve (SeqAp f x) = do
             actions <- get
-            let (f', actions')  = runState (retrieve f) actions
-            let (x', actions'') = runState (retrieve x) actions'
+            let (Just f', actions')  = runState (retrieve f) actions
+            let (Just x', actions'') = runState (retrieve x) actions'
             put actions''
-            pure (f' x')
+            pure $ Just (f' x')
 
         retrieve (Fmap f x)  = do
             actions <- get
-            let (x', actions') = runState (retrieve x) actions
+            let (Just x', actions') = runState (retrieve x) actions
             put actions'
-            pure (f x')
+            pure $ Just (f x')
 
-        retrieve (Pure x)   = pure x
+        retrieve (Pure x)   = pure (Just x)
+        retrieve (Fail str) = modify (Failed str :) >> pure Nothing
+
+        retrieve (Bind (Fail str) f) = modify (Failed str :) >> pure Nothing
 
         retrieve (Bind x f) = do
             actions <- get
-            let (x', actions') = runState (retrieve x) actions
+            let (Just x', actions') = runState (retrieve x) actions
             put actions'
             retrieve (f x')
 
@@ -131,7 +140,7 @@ exactRun :: (Show b, Eq b)
          => FileSystem
          -> Context a
          -> Recipe FakeIO a b
-         -> (b, [FakeIOActions])
+         -> (Maybe b, [FakeIOActions])
          -> Assertion
 exactRun fs ctx r expected =
     let fakeIO = runRecipe r ctx

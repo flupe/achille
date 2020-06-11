@@ -39,17 +39,17 @@ achilleCLI = subparser $
 
 
 -- | CLI interface for running a task
-achille :: MonadIO m => Task m a -> IO ()
+achille :: Task IO a -> IO ()
 achille = achilleWith def
 
 
 -- | CLI interface for running a task using given options
-achilleWith :: MonadIO m => Config -> Task m a -> IO ()
+achilleWith :: Config -> Task IO a -> IO ()
 achilleWith config task = customExecParser p opts >>= \case
     Deploy -> mapM_ Process.callCommand (deployCmd config)
     Clean  -> removePathForcibly (outputDir config)
            >> removePathForcibly (cacheFile config)
-    Build paths -> void $ pure $ runTask (map compile paths) config task
+    Build paths -> void $ runTask (map compile paths) config task
     where
         opts = info (achilleCLI <**> helper) $ fullDesc <> header desc
         p    = prefs showHelpOnEmpty

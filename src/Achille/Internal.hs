@@ -110,6 +110,7 @@ instance Functor m => Functor (Recipe m a) where
 
 instance Monad m => Applicative (Recipe m a) where
     pure  = Recipe . const . pure . (, emptyCache)
+
     (<*>) = ap
 
 
