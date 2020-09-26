@@ -88,22 +88,22 @@ readPandocMetadataWith ropts = nonCached \Context{..} -> do
 
 -- | Recipe to convert a Pandoc document to HTML.
 renderPandoc :: MonadIO m
-             => Pandoc -> Recipe m a Html
+             => Pandoc -> Recipe m a Text
 renderPandoc = renderPandocWith def 
 
 -- | Recipe to convert a Pandoc document to HTML using specified writer options.
 renderPandocWith :: MonadIO m
-                 => WriterOptions -> Pandoc -> Recipe m a Html
-renderPandocWith wopts = liftIO . runIOorExplode <$> writeHtml5 wopts
+                 => WriterOptions -> Pandoc -> Recipe m a Text
+renderPandocWith wopts = liftIO . runIOorExplode <$> writeHtml5String wopts
 
 -- | Recipe to load and convert a Pandoc document to HTML.
 compilePandoc :: MonadIO m
-              => Recipe m FilePath Html
+              => Recipe m FilePath Text
 compilePandoc = readPandoc >>= renderPandoc
 
 -- | Recipe to load and convert a Pandoc document to HTML.
 compilePandocWith :: MonadIO m
-                  => ReaderOptions -> WriterOptions -> Recipe m FilePath Html
+                  => ReaderOptions -> WriterOptions -> Recipe m FilePath Text
 compilePandocWith ropts wopts =
     readPandocWith ropts >>= renderPandocWith wopts
 

@@ -13,24 +13,20 @@ module Achille.Timestamped
     , oldFirst
     ) where
 
-import Data.Ord           (Ord, compare, Ordering)
-import System.FilePath    (FilePath)
-import Data.Dates         (DateTime(..))
-import Data.List          (sortBy, sort)
-import Data.Typeable      (Typeable)
-import Data.Binary        (Binary, put, get)
-import Data.Dates.Formats (parseDateFormat)
-import System.FilePath    (takeFileName)
+import Data.Ord                   (Ord, compare, Ordering)
+import System.FilePath            (FilePath)
+import Data.List                  (sortBy, sort)
+import Data.Typeable              (Typeable)
+import Data.Binary                (Binary, put, get)
+import Data.Time.Calendar         (fromGregorian)
+import Data.Time                  (UTCTime(..), secondsToDiffTime)
+import Data.Time.Format           (readSTime, defaultTimeLocale)
+import System.FilePath            (takeFileName)
+import Data.Binary.Instances.Time ()
 
 -- | Container for timestamping data
-data Timestamped a = Timestamped DateTime a
+data Timestamped a = Timestamped UTCTime a
     deriving (Show, Eq, Ord, Typeable, Functor)
-
-
-instance Binary DateTime where
-    put (DateTime y m d hr mi sc) = put y  >> put m  >> put d
-                                 >> put hr >> put mi >> put sc
-    get = DateTime <$> get <*> get <*> get <*> get <*> get <*> get
 
 instance Binary a => Binary (Timestamped a) where
     put (Timestamped d x) = put d >> put x
@@ -39,21 +35,22 @@ instance Binary a => Binary (Timestamped a) where
 
 -- | Class for values that can be timestamped
 class IsTimestamped a where
-    timestamp :: a -> DateTime
+    timestamp :: a -> UTCTime
 
 instance IsTimestamped (Timestamped a) where
     timestamp (Timestamped d _) = d
 
 instance IsTimestamped FilePath where
-    timestamp p = case parseDateFormat "YYYY-MM-DD" (takeFileName p) of
-      Right d -> d
-      Left _  -> DateTime 0 1 0 0 0 0
+    timestamp p =
+        case readSTime False defaultTimeLocale "%Y-%m-%d" (takeFileName p) of
+            [(t, _)] -> t
+            _        -> UTCTime (fromGregorian 1970 01 01) (secondsToDiffTime 0)
 
 
 timestamped :: IsTimestamped a => a -> Timestamped a
 timestamped x = Timestamped (timestamp x) x
 
-timestampedWith :: (a -> DateTime) -> a -> Timestamped a
+timestampedWith :: (a -> UTCTime) -> a -> Timestamped a
 timestampedWith f x = Timestamped (f x) x
 
 compareTimestamped :: IsTimestamped a => a -> a -> Ordering

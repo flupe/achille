@@ -29,6 +29,8 @@ data FakeIO a where
     CopyFile            :: FilePath -> FilePath       -> FakeIO ()
     WriteFile           :: FilePath -> BS.ByteString  -> FakeIO ()
     WriteFileLazy       :: FilePath -> LBS.ByteString -> FakeIO ()
+    DoesFileExist       :: FilePath -> m Bool
+    DoesDirExist        :: FilePath -> m Bool
     CallCommand         :: String   -> FakeIO ()
     Log                 :: String   -> FakeIO ()
     Glob                :: FilePath -> Glob.Pattern -> FakeIO [FilePath]
@@ -61,6 +63,8 @@ instance AchilleIO FakeIO where
     copyFile            = CopyFile
     writeFile           = WriteFile
     writeFileLazy       = WriteFileLazy
+    doesFileExist       = DoesFileExist
+    doesDirExist        = DoesDirExist
     callCommand         = CallCommand
     log                 = Log
     glob                = Glob
@@ -106,6 +110,8 @@ retrieveFakeIOActions t fs = bimap (fmap fst) reverse $ runState (retrieve t) []
         retrieve (CopyFile from to)  = Just <$> modify (CopiedFile from to :)
         retrieve (WriteFile p c)     = Just <$> modify (WrittenFile p c :)
         retrieve (WriteFileLazy p c) = Just <$> modify (WrittenFileLazy p c :)
+        retrieve (DoesFileExist p)   = 
+
         retrieve (CallCommand cmd)   = Just <$> modify (CalledCommand cmd :)
         retrieve (Log str)           = pure $ Just ()
         retrieve (Glob dir p)        = undefined
@@ -137,12 +143,12 @@ retrieveFakeIOActions t fs = bimap (fmap fst) reverse $ runState (retrieve t) []
 
 
 exactRun :: (Show b, Eq b)
-         => FileSystem
-         -> Context a
-         -> Recipe FakeIO a b
-         -> (Maybe b, [FakeIOActions])
-         -> Assertion
-exactRun fs ctx r expected =
+    => FileSystem
+    -> Context a
+    -> Recipe FakeIO a b
+-> (Maybe b, [FakeIOActions])
+    -> Assertion
+    exactRun fs ctx r expected =
     let fakeIO = runRecipe r ctx
-        trace  = retrieveFakeIOActions fakeIO fs
+    trace  = retrieveFakeIOActions fakeIO fs
     in trace @?= expected

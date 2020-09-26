@@ -6,6 +6,7 @@ module Achille.Recipe
     , getInput
     , getCurrentDir
     , readText
+    , readBS
     , saveFile
     , saveFileAs
     , copyFile
@@ -24,6 +25,7 @@ import Data.Binary             (Binary, encodeFile)
 import Data.Functor            (void)
 import Data.Text               (Text, pack)
 import Data.Text.Encoding      (decodeUtf8)
+import Data.ByteString         (ByteString)
 import Text.Blaze.Html         (Html)
 import System.FilePath         ((</>))
 
@@ -63,6 +65,10 @@ readText :: AchilleIO m
          => Recipe m FilePath Text
 readText = nonCached \Context{..} ->
     decodeUtf8 <$> AchilleIO.readFile (inputDir </> currentDir </> inputValue)
+
+readBS :: AchilleIO m => Recipe m FilePath ByteString
+readBS = nonCached \Context{..} ->
+    AchilleIO.readFile (inputDir </> currentDir </> inputValue)
 
 -- | Recipe for saving a value to the location given as input.
 --   Returns the input filepath as is.

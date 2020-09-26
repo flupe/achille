@@ -16,7 +16,7 @@ module Achille.Task
 
 
 import Data.Functor            ((<&>))
-import Control.Monad           (forM)
+import Control.Monad           (forM, filterM)
 import Control.Monad.IO.Class  (MonadIO, liftIO)
 import Data.Binary             (Binary)
 import System.FilePath         (FilePath, (</>), takeDirectory, takeFileName)
@@ -47,6 +47,11 @@ type Watch a    = (a, Cache)
 shouldForce :: Context a -> FilePath -> Bool
 shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 
+-- TODO: investigate whether we need glob at all?
+--       It doesn't look like it's very fast,
+--       and it doesn't allow you to do conditionals with {}
+--       such as *.{jpg, png}
+
 -- | Run a recipe on every filepath matching a given pattern.
 --   The results are cached and the recipe only recomputes
 --   when the underlying file has changed since last run.
@@ -55,6 +60,7 @@ match :: (AchilleIO m, Binary a)
 match pattern (Recipe r :: Recipe m FilePath b) = Recipe \ctx -> do
     let (cached, c'@Context{..}) = fromContext ctx
     paths <- AchilleIO.glob (inputDir </> currentDir) pattern
+             >>= filterM (AchilleIO.doesFileExist . ((inputDir </> currentDir) </>))
     case cached :: Maybe (Match b) of
         Nothing -> do
             result <- forM paths \p ->
@@ -82,6 +88,7 @@ match_ :: AchilleIO m => Pattern -> Recipe m FilePath a -> Task m ()
 match_ pattern (Recipe r) = Recipe \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
     paths <- AchilleIO.glob (inputDir </> currentDir) pattern
+             >>= filterM (AchilleIO.doesFileExist . ((inputDir </> currentDir) </>))
     case result :: Maybe MatchVoid of
         Nothing -> do
             result <- forM paths \p ->

@@ -38,10 +38,10 @@ library
                    , binary
                    , bytestring
                    , text
-                   , dates
                    , time
                    , data-default
                    , optparse-applicative
+                   , binary-instances
 
   if flag(pandoc)
     exposed-modules: Achille.Recipe.Pandoc

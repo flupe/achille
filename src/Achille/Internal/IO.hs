@@ -5,6 +5,8 @@ module Achille.Internal.IO
     , copyFile
     , writeFile
     , writeFileLazy
+    , doesFileExist
+    , doesDirExist
     , callCommand
     , log
     , glob
@@ -35,6 +37,8 @@ class (Monad m, MonadFail m) => AchilleIO m where
     copyFile            :: FilePath -> FilePath       -> m ()
     writeFile           :: FilePath -> BS.ByteString  -> m ()
     writeFileLazy       :: FilePath -> LBS.ByteString -> m ()
+    doesFileExist       :: FilePath -> m Bool
+    doesDirExist        :: FilePath -> m Bool
     callCommand         :: String   -> m ()
     log                 :: String   -> m ()
     glob                :: FilePath -> Glob.Pattern   -> m [FilePath]
@@ -52,6 +56,8 @@ instance AchilleIO IO where
     copyFile from to    = ensureDirExists to >> Directory.copyFile from to
     writeFile to x      = ensureDirExists to >> BS.writeFile to x
     writeFileLazy to x  = ensureDirExists to >> LBS.writeFile to x
+    doesFileExist       = Directory.doesFileExist
+    doesDirExist        = Directory.doesDirectoryExist
     callCommand         = Process.callCommand
     log                 = Prelude.putStrLn
     glob dir pattern    =
