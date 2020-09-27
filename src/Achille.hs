@@ -1,3 +1,4 @@
+-- | Top-level module for achille, providing the CLI and task runner.
 module Achille
     ( module Achille.Config
     , module Achille.Timestamped
@@ -24,6 +25,7 @@ import Achille.Recipe
 import Achille.Task
 
 
+-- | CLI commands.
 data AchilleCommand
     = Build [String]  -- ^ Build the site once
     | Deploy          -- ^ Deploy to the server
@@ -31,6 +33,7 @@ data AchilleCommand
     deriving (Eq, Show)
 
 
+-- | CLI parser.
 achilleCLI :: Parser AchilleCommand
 achilleCLI = subparser $
       command "build"  (info (Build <$> many (argument str (metavar "FILES")))  (progDesc "Build the site once" ))
@@ -38,12 +41,12 @@ achilleCLI = subparser $
    <> command "clean"  (info (pure Clean)  (progDesc "Delete all artefacts"))
 
 
--- | CLI interface for running a task
+-- | Main entrypoint for achille. Provides a CLI for running a task.
 achille :: Task IO a -> IO ()
 achille = achilleWith def
 
 
--- | CLI interface for running a task using given options
+-- | CLI for running a task using given options.
 achilleWith :: Config -> Task IO a -> IO ()
 achilleWith config task = customExecParser p opts >>= \case
     Deploy -> mapM_ Process.callCommand (deployCmd config)

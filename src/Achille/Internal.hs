@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveFunctor    #-}
 
+-- | Defines recipes, how they compose and evaluate.
 module Achille.Internal
     ( Cache
     , emptyCache
@@ -100,6 +101,7 @@ nonCached :: Functor m => (Context a -> m b) -> Recipe m a b
 nonCached f = Recipe \c -> (, emptyCache) <$> f c {cache = emptyCache}
 
 
+-- | Run a recipe with a given context.
 runRecipe :: Recipe m a b -> Context a -> m (b, Cache)
 runRecipe (Recipe r) = r
 

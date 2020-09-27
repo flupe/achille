@@ -1,3 +1,4 @@
+-- | Exports a datatype for the top-level achille config.
 module Achille.Config
     ( Config (..)
     , def
@@ -8,6 +9,7 @@ import System.FilePath (FilePath)
 import Data.Default    (Default, def)
 
 
+-- | achille configuration datatype.
 data Config = Config
     { contentDir :: FilePath      -- ^ Root of the source directory.
                                   --   Defaults to @"content"@.

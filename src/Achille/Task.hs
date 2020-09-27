@@ -3,6 +3,7 @@
 {-# LANGUAGE BangPatterns        #-}
 {-# LANGUAGE LambdaCase          #-}
 
+-- | Defines core combinators for processing files incrementally.
 module Achille.Task
     ( Task
     , match
@@ -108,6 +109,10 @@ match_ pattern (Recipe r) = Recipe \ctx -> do
             return ((), toCache (result :: MatchVoid))
 
 
+-- | Run a recipe for a filepath matching a given pattern.
+--   The result is cached and the recipe only recomputes
+--   when the underlying file has changed since last run.
+--   Will fail is no file is found matching the pattern.
 matchFile :: (AchilleIO m, Binary a)
           => Pattern -> Recipe m FilePath a -> Recipe m b a
 matchFile p (Recipe r :: Recipe m FilePath a) = Recipe \ctx@Context{..} ->
@@ -158,6 +163,8 @@ matchDir pattern (Recipe r) = Recipe \ctx -> do
             return (map fst result, toCache (zip paths (map snd result) :: MatchDir))
 
 
+-- | Cache a value and only trigger a given recipe if said value has changed between runs.
+--   cache the result of the recipe.
 with :: (Applicative m, Binary a, Eq a, Binary b)
      => a -> Recipe m c b -> Recipe m c b
 with (x :: a) (Recipe r :: Recipe m1 c d) = Recipe \ctx ->
@@ -171,6 +178,9 @@ with (x :: a) (Recipe r :: Recipe m1 c d) = Recipe \ctx ->
             else r c' <&> \v -> (fst v, toCache ((x, v) :: With a d))
 
 
+-- | Cache a value and only trigger a given recipe if said value has changed between runs.
+--   Like 'with', but the result of the recipe won't be cached.
+--   If the recipe must be retriggered, it will be in depth.
 watch :: (Functor m, Binary a, Eq a)
       => a -> Recipe m c b -> Recipe m c b
 watch (x :: a) (Recipe r :: Recipe m c b) = Recipe \ctx ->

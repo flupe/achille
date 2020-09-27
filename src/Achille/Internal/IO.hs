@@ -1,3 +1,4 @@
+-- | Defines an IO interface for core recipes
 module Achille.Internal.IO
     ( AchilleIO
     , readFile
@@ -31,17 +32,30 @@ import qualified Data.ByteString      as BS
 import qualified Data.ByteString.Lazy as LBS
 
 
+-- | Interface for IO actions used by core recipes.
 class (Monad m, MonadFail m) => AchilleIO m where
+    -- | Retrieve a file as a bytestring.
     readFile            :: FilePath -> m BS.ByteString
+    -- | Retrieve a file as a /lazy/ bytestring.
     readFileLazy        :: FilePath -> m LBS.ByteString
+    -- | Copy a file from one location to another.
     copyFile            :: FilePath -> FilePath       -> m ()
+    -- | Write a bytestring to a file.
     writeFile           :: FilePath -> BS.ByteString  -> m ()
+    -- | Write a /lazy/ bytestring to a file.
     writeFileLazy       :: FilePath -> LBS.ByteString -> m ()
+    -- | Check whether a file exists.
     doesFileExist       :: FilePath -> m Bool
+    -- | Check whether a directory exists.
     doesDirExist        :: FilePath -> m Bool
+    -- | Run a shell command in a new process.
     callCommand         :: String   -> m ()
+    -- | Log a string to stdout.
     log                 :: String   -> m ()
-    glob                :: FilePath -> Glob.Pattern   -> m [FilePath]
+    -- | Find all paths matching a given globpattern, relative to a given directory.
+    glob                :: FilePath -- ^ Path of the root directory.
+                        -> Glob.Pattern   -> m [FilePath]
+    -- | Get modification time of a file.
     getModificationTime :: FilePath -> m UTCTime
 
 

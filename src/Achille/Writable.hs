@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+-- | Defines an interface for things that can be written to disk.
 module Achille.Writable where
 
 import Data.Text                as Text

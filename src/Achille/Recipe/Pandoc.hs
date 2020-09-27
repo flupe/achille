@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
+-- | Defines convenience recipes for reading and writing documents with pandoc.
 module Achille.Recipe.Pandoc
     ( readPandoc
     , readPandocWith
@@ -20,8 +21,6 @@ import Data.Functor     (void)
 import Data.Text        (Text, pack)
 import Data.Text.Encoding (decodeUtf8)
 import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirectory)
-import Text.Blaze.Html                (Html)
-import Text.Blaze.Html.Renderer.Utf8  (renderHtml)
 
 import System.FilePath
 import Text.Pandoc      hiding (nonCached)
@@ -32,10 +31,8 @@ import qualified Data.Text.IO                     as Text
 import qualified System.FilePath.Glob             as Glob
 import qualified Data.ByteString                  as ByteString
 import qualified Data.ByteString.Lazy             as LazyByteString
-import qualified Text.Blaze.Html.Renderer.String  as BlazeString
 import qualified System.FilePath                  as Path
 import qualified System.Process                   as Process
-
 
 import           Achille.Config
 import           Achille.Internal hiding (currentDir)
@@ -106,7 +103,3 @@ compilePandocWith :: MonadIO m
                   => ReaderOptions -> WriterOptions -> Recipe m FilePath Text
 compilePandocWith ropts wopts =
     readPandocWith ropts >>= renderPandocWith wopts
-
-
-instance AchilleIO m => Writable m Html where
-    write p = Writable.write p . renderHtml

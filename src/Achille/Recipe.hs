@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
+-- | Core recipes including reading files, saving them.
 module Achille.Recipe
     ( Recipe
     , liftIO
@@ -26,7 +27,6 @@ import Data.Functor            (void)
 import Data.Text               (Text, pack)
 import Data.Text.Encoding      (decodeUtf8)
 import Data.ByteString         (ByteString)
-import Text.Blaze.Html         (Html)
 import System.FilePath         ((</>))
 
 import           Achille.Config
@@ -66,6 +66,7 @@ readText :: AchilleIO m
 readText = nonCached \Context{..} ->
     decodeUtf8 <$> AchilleIO.readFile (inputDir </> currentDir </> inputValue)
 
+-- | Recipe retrieving the contents of the input file as a bytestring.
 readBS :: AchilleIO m => Recipe m FilePath ByteString
 readBS = nonCached \Context{..} ->
     AchilleIO.readFile (inputDir </> currentDir </> inputValue)
@@ -126,10 +127,19 @@ debug :: AchilleIO m
       => Show b => b -> Recipe m a ()
 debug = nonCached . const . AchilleIO.log . show
 
+-- | Recipe for running a shell command in a new process.
 callCommand :: AchilleIO m
             => String -> Recipe m a ()
 callCommand = nonCached . const . AchilleIO.callCommand
 
+-- | Recipe for running a shell command in a new process.
+--   The command is defined with an helper function which depends on an input filepath
+--   and the same filepath with a modifier applied.
+--
+--   Examples:
+--
+--   > cp :: Recipe IO FilePath FilePath
+--   > cp = runCommandWith id (\a b -> "cp " <> a <> " " <> b)
 runCommandWith :: AchilleIO m
                => (FilePath -> FilePath)
                -> (FilePath -> FilePath -> String)
@@ -140,6 +150,6 @@ runCommandWith mod cmd = nonCached \Context{..} ->
                                   (outputDir </> currentDir </> p'))
        >> pure p'
 
-
+-- | Recipe that will retrieve the datetime contained in a filepath.
 toTimestamped :: Monad m => FilePath -> Recipe m a (Timestamped FilePath)
 toTimestamped = pure . timestamped
