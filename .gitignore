@@ -1,5 +1,4 @@
+*.local
 dist-newstyle
-_site
-.cache
-*.agdai
 *~
+result

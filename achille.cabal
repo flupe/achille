@@ -1,11 +1,17 @@
 name:               achille
-version:            0.0.0.0
+version:            0.0.0
 synopsis:           A library for building static site generators
-author:             Lucas Escot <lucas@escot.me>
+bug-reports:        https://github.com/flupe/achille/issues
+homepage:           https://acatalepsie.fr/projects/achille
+author:             flupe <lucas@escot.me>
 license:            MIT
 license-file:       LICENSE
 cabal-version:      >= 1.10
 build-type:         Simple
+
+source-repository head
+  type:             git
+  location:         git://github.com/flupe/achille.git
 
 flag pandoc
   description: Enable Pandoc support

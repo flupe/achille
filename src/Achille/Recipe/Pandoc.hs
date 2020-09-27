@@ -65,12 +65,12 @@ readPandocWith ropts = nonCached \Context{..}  ->
                 >>= runIOorExplode <$> f ropts
 
 -- | Recipe for loading a pandoc document and a frontmatter header.
-readPandocMetadata :: (MonadIO m, FromJSON a)
+readPandocMetadata :: (MonadIO m, MonadFail m, FromJSON a)
                    => Recipe m FilePath (a, Pandoc)
 readPandocMetadata = readPandocMetadataWith def
 
 -- | Recipe for loading a pandoc document using a given reader config
-readPandocMetadataWith :: (MonadIO m, FromJSON a)
+readPandocMetadataWith :: (MonadIO m, MonadFail m, FromJSON a)
                        => ReaderOptions -> Recipe m FilePath (a, Pandoc)
 readPandocMetadataWith ropts = nonCached \Context{..} -> do
     let ext         = drop 1 $ takeExtension inputValue

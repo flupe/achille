@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, ScopedTypeVariables #-}
 
 module FakeIO where
 
@@ -29,8 +29,8 @@ data FakeIO a where
     CopyFile            :: FilePath -> FilePath       -> FakeIO ()
     WriteFile           :: FilePath -> BS.ByteString  -> FakeIO ()
     WriteFileLazy       :: FilePath -> LBS.ByteString -> FakeIO ()
-    DoesFileExist       :: FilePath -> m Bool
-    DoesDirExist        :: FilePath -> m Bool
+    DoesFileExist       :: FilePath -> FakeIO Bool
+    DoesDirExist        :: FilePath -> FakeIO Bool
     CallCommand         :: String   -> FakeIO ()
     Log                 :: String   -> FakeIO ()
     Glob                :: FilePath -> Glob.Pattern -> FakeIO [FilePath]
@@ -110,7 +110,7 @@ retrieveFakeIOActions t fs = bimap (fmap fst) reverse $ runState (retrieve t) []
         retrieve (CopyFile from to)  = Just <$> modify (CopiedFile from to :)
         retrieve (WriteFile p c)     = Just <$> modify (WrittenFile p c :)
         retrieve (WriteFileLazy p c) = Just <$> modify (WrittenFileLazy p c :)
-        retrieve (DoesFileExist p)   = 
+        retrieve (DoesFileExist p)   = undefined
 
         retrieve (CallCommand cmd)   = Just <$> modify (CalledCommand cmd :)
         retrieve (Log str)           = pure $ Just ()
@@ -146,9 +146,9 @@ exactRun :: (Show b, Eq b)
     => FileSystem
     -> Context a
     -> Recipe FakeIO a b
--> (Maybe b, [FakeIOActions])
+    -> (Maybe b, [FakeIOActions])
     -> Assertion
-    exactRun fs ctx r expected =
+exactRun fs ctx r expected =
     let fakeIO = runRecipe r ctx
-    trace  = retrieveFakeIOActions fakeIO fs
+        trace  = retrieveFakeIOActions fakeIO fs
     in trace @?= expected
