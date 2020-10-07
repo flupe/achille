@@ -37,8 +37,8 @@ library
                    , Achille.Timestamped
                    , Achille.Internal
                    , Achille.Internal.IO
-                   , Achille.Recipe
                    , Achille.Task
+                   , Achille.Task.Cached
   build-depends:     base                  >= 4.11    && < 5
                    , process               >= 1.6.9   && < 1.7
                    , filepath              >= 1.4.2   && < 1.5
@@ -54,7 +54,7 @@ library
 
 
   if flag(pandoc)
-    exposed-modules: Achille.Recipe.Pandoc
+    exposed-modules: Achille.Task.Pandoc
     build-depends:   pandoc                >= 2.9.2  && < 2.10
                    , pandoc-types          >= 1.20   && < 1.21
                    , frontmatter           >= 0.1.0  && < 0.2

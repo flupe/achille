@@ -2,8 +2,8 @@
 module Achille
     ( module Achille.Config
     , module Achille.Timestamped
-    , module Achille.Recipe
     , module Achille.Task
+    , module Achille.Task.Cached
     , AchilleCommand
     , achilleCLI
     , achille
@@ -21,8 +21,8 @@ import qualified System.Process as Process
 
 import Achille.Config
 import Achille.Timestamped
-import Achille.Recipe
 import Achille.Task
+import Achille.Task.Cached
 
 
 -- | CLI commands.

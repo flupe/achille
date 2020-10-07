@@ -4,7 +4,7 @@
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 -- | Defines convenience recipes for reading and writing documents with pandoc.
-module Achille.Recipe.Pandoc
+module Achille.Task.Pandoc
     ( readPandoc
     , readPandocWith
     , readPandocMetadata
@@ -37,46 +37,51 @@ import qualified System.Process                   as Process
 import           Achille.Config
 import           Achille.Internal hiding (currentDir)
 import qualified Achille.Internal as Internal
-import           Achille.Recipe
+import           Achille.Task
 import           Achille.Writable as Writable
 import           Achille.Internal.IO (AchilleIO)
 
 
 -- | Recipe for loading a pandoc document
 readPandoc :: MonadIO m
-           => Recipe m FilePath Pandoc
+           => FilePath -> Task m Pandoc
 readPandoc = readPandocWith def
 
 -- | Recipe for loading a pandoc document using a given reader config
 readPandocWith :: MonadIO m
-               => ReaderOptions -> Recipe m FilePath Pandoc
-readPandocWith ropts = nonCached \Context{..}  ->
-    let ext = drop 1 $ takeExtension inputValue
+               => ReaderOptions
+               -> FilePath
+               -> Task m Pandoc
+readPandocWith ropts p = nonCached \Context{..}  ->
+    let ext = drop 1 $ takeExtension p
         Just reader = lookup (pack ext) readers
     in case reader of
         ByteStringReader f -> liftIO $ 
-            LazyByteString.readFile (inputDir </> currentDir </> inputValue)
+            LazyByteString.readFile (inputDir </> currentDir </> p)
                 >>= runIOorExplode <$> f ropts
         TextReader f -> liftIO $
-            Text.readFile (inputDir </> currentDir </> inputValue)
+            Text.readFile (inputDir </> currentDir </> p)
                 >>= runIOorExplode <$> f ropts
 
 -- | Recipe for loading a pandoc document and a frontmatter header.
 readPandocMetadata :: (MonadIO m, MonadFail m, FromJSON a)
-                   => Recipe m FilePath (a, Pandoc)
+                   => FilePath
+                   -> Task m (a, Pandoc)
 readPandocMetadata = readPandocMetadataWith def
 
 -- | Recipe for loading a pandoc document using a given reader config
 readPandocMetadataWith :: (MonadIO m, MonadFail m, FromJSON a)
-                       => ReaderOptions -> Recipe m FilePath (a, Pandoc)
-readPandocMetadataWith ropts = nonCached \Context{..} -> do
-    let ext         = drop 1 $ takeExtension inputValue
+                       => ReaderOptions
+                       -> FilePath
+                       -> Task m (a, Pandoc)
+readPandocMetadataWith ropts p = nonCached \Context{..} -> do
+    let ext         = drop 1 $ takeExtension p
         Just reader = lookup (pack ext) readers
-    contents <- liftIO $ ByteString.readFile (inputDir </> currentDir </> inputValue)
+    contents <- liftIO $ ByteString.readFile (inputDir </> currentDir </> p)
     (meta, remaining) <-
             case parseYamlFrontmatter contents of
                 Done i a -> pure (a, i)
-                _        -> fail $ "error while loading meta of " <> inputValue
+                _        -> fail $ "error while loading meta of " <> p
     (meta,) <$> case reader of
         ByteStringReader f -> liftIO $
             runIOorExplode $ f ropts (LazyByteString.fromStrict remaining)
@@ -85,21 +90,24 @@ readPandocMetadataWith ropts = nonCached \Context{..} -> do
 
 -- | Recipe to convert a Pandoc document to HTML.
 renderPandoc :: MonadIO m
-             => Pandoc -> Recipe m a Text
+             => Pandoc -> Task m Text
 renderPandoc = renderPandocWith def 
 
 -- | Recipe to convert a Pandoc document to HTML using specified writer options.
 renderPandocWith :: MonadIO m
-                 => WriterOptions -> Pandoc -> Recipe m a Text
+                 => WriterOptions -> Pandoc -> Task m Text
 renderPandocWith wopts = liftIO . runIOorExplode <$> writeHtml5String wopts
 
 -- | Recipe to load and convert a Pandoc document to HTML.
 compilePandoc :: MonadIO m
-              => Recipe m FilePath Text
-compilePandoc = readPandoc >>= renderPandoc
+              => FilePath -> Task m Text
+compilePandoc p = readPandoc p >>= renderPandoc
 
 -- | Recipe to load and convert a Pandoc document to HTML.
 compilePandocWith :: MonadIO m
-                  => ReaderOptions -> WriterOptions -> Recipe m FilePath Text
-compilePandocWith ropts wopts =
-    readPandocWith ropts >>= renderPandocWith wopts
+                  => ReaderOptions
+                  -> WriterOptions
+                  -> FilePath
+                  -> Task m Text
+compilePandocWith ropts wopts p =
+    readPandocWith ropts p >>= renderPandocWith wopts

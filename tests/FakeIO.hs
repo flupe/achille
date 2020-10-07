@@ -18,7 +18,7 @@ import Control.Monad.State
 
 import Test.Tasty.HUnit
 
-import Achille.Recipe
+import Achille.Task
 import Achille.Internal
 import Achille.Internal.IO as AchilleIO
 
@@ -144,11 +144,11 @@ retrieveFakeIOActions t fs = bimap (fmap fst) reverse $ runState (retrieve t) []
 
 exactRun :: (Show b, Eq b)
     => FileSystem
-    -> Context a
-    -> Recipe FakeIO a b
+    -> Context
+    -> Task FakeIO b
     -> (Maybe b, [FakeIOActions])
     -> Assertion
-exactRun fs ctx r expected =
-    let fakeIO = runRecipe r ctx
+exactRun fs ctx t expected =
+    let fakeIO = unTask t ctx
         trace  = retrieveFakeIOActions fakeIO fs
     in trace @?= expected

@@ -9,9 +9,7 @@ module Achille.Internal
     , fromContext
     , MustRun(..)
     , Context(..)
-    , Recipe(..)
-    , Task
-    , runRecipe
+    , Task(..)
     , nonCached
     ) where
 
@@ -67,7 +65,7 @@ lowerMustRun x = NoMust
 --   We also lower the run rule in the returned context, if possible.
 --
 --   The types are not explicit enough, should rewrite.
-fromContext :: Binary a => Context b -> (Maybe a, Context b)
+fromContext :: Binary a => Context -> (Maybe a, Context)
 fromContext c =
     let r = mustRun c in
     if r /= NoMust then (Nothing, c {mustRun = lowerMustRun r})
@@ -76,11 +74,10 @@ fromContext c =
 
 
 -- | Description of a computation producing a value b given some input a.
-newtype Recipe m a b = Recipe (Context a -> m (b, Cache))
 
 
 -- | Context in which a recipe is being executed.
-data Context a = Context
+data Context = Context
     { inputDir    :: FilePath        -- ^ Input root directory
     , outputDir   :: FilePath        -- ^ Output root directory
     , currentDir  :: FilePath        -- ^ Current directory
@@ -88,31 +85,24 @@ data Context a = Context
     , forceFiles  :: [Pattern]       -- ^ Files marked as dirty
     , mustRun     :: MustRun         -- ^ Whether the current task must run
     , cache       :: Cache           -- ^ Local cache
-    , inputValue  :: a               -- ^ Input value
-    } deriving (Functor)
+    }
 
 
 -- | A task is a recipe with no input
-type Task m = Recipe m ()
+newtype Task m a = Task { unTask :: Context -> m (a, Cache) }
 
 
 -- | Make a recipe out of a computation that is known not to be cached.
-nonCached :: Functor m => (Context a -> m b) -> Recipe m a b
-nonCached f = Recipe \c -> (, emptyCache) <$> f c {cache = emptyCache}
+nonCached :: Functor m => (Context -> m a) -> Task m a
+nonCached f = Task \c -> (, emptyCache) <$> f c {cache = emptyCache}
 
 
--- | Run a recipe with a given context.
-runRecipe :: Recipe m a b -> Context a -> m (b, Cache)
-runRecipe (Recipe r) = r
+instance Functor m => Functor (Task m) where
+    fmap f (Task r) = Task \c -> first f <$> r c
 
 
-instance Functor m => Functor (Recipe m a) where
-    fmap f (Recipe r) = Recipe \c -> first f <$> r c
-
-
-instance Monad m => Applicative (Recipe m a) where
-    pure  = Recipe . const . pure . (, emptyCache)
-
+instance Monad m => Applicative (Task m) where
+    pure  = Task . const . pure . (, emptyCache)
     (<*>) = ap
 
 
@@ -120,32 +110,32 @@ splitCache :: Cache -> (Cache, Cache)
 splitCache = fromMaybe (emptyCache, emptyCache) . fromCache
 
 
-instance Monad m => Monad (Recipe m a) where
-    Recipe r >>= f = Recipe \c -> do
+instance Monad m => Monad (Task m) where
+    Task r >>= f = Task \c -> do
         let (cr, cf) = splitCache (cache c)
-        (x, cr') <- r c   {cache = cr}
-        (y, cf') <- runRecipe (f x) c {cache = cf}
+        (x, cr') <- r c {cache = cr}
+        (y, cf') <- unTask (f x) c {cache = cf}
         pure (y, toCache (cr', cf'))
 
     -- parallelism for free?
-    Recipe r >> Recipe s = Recipe \c -> do
+    Task r >> Task s = Task \c -> do
         let (cr, cs) = splitCache (cache c)
         (_, cr') <- r c {cache = cr}
         (y, cs') <- s c {cache = cs}
         pure (y, toCache (cr', cs'))
 
 
-instance MonadIO m => MonadIO (Recipe m a) where
+instance MonadIO m => MonadIO (Task m) where
     liftIO = nonCached . const . liftIO
 
 
-instance MonadFail m => MonadFail (Recipe m a) where
-    fail = Recipe . const . fail
+instance MonadFail m => MonadFail (Task m) where
+    fail = Task . const . fail
 
 
-instance (Monad m, Semigroup b) => Semigroup (Recipe m a b) where
+instance (Monad m, Semigroup a) => Semigroup (Task m a) where
     x <> y = liftA2 (<>) x y
 
 
-instance (Monad m, Monoid b) => Monoid (Recipe m a b) where
+instance (Monad m, Monoid a) => Monoid (Task m a) where
     mempty = pure mempty
