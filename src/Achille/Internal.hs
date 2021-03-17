@@ -84,6 +84,7 @@ data Context = Context
     , timestamp   :: UTCTime         -- ^ Timestamp of the last run
     , forceFiles  :: [Pattern]       -- ^ Files marked as dirty
     , mustRun     :: MustRun         -- ^ Whether the current task must run
+    , ignore      :: [Pattern]
     , cache       :: Cache           -- ^ Local cache
     }
 

@@ -14,8 +14,11 @@ module Achille.Task
     , write
     , debug
     , callCommand
+    , readCommand
     , callCommandWith
     , toTimestamped
+    , toAbsolute
+    , getOutputDir
     ) where
 
 import Control.Monad.IO.Class  (liftIO)
@@ -119,6 +122,11 @@ callCommand :: AchilleIO m
 callCommand = nonCached . const . AchilleIO.callCommand
 
 -- | Recipe for running a shell command in a new process.
+readCommand :: AchilleIO m
+            => String -> [String] -> Task m String
+readCommand cmd args = nonCached $ const $ AchilleIO.readCommand cmd args
+
+-- | Recipe for running a shell command in a new process.
 --   The command is defined with an helper function which depends on an input filepath
 --   and the same filepath with a modifier applied.
 --
@@ -139,3 +147,11 @@ callCommandWith cmd mod p = nonCached \Context{..} ->
 -- | Recipe that will retrieve the datetime contained in a filepath.
 toTimestamped :: Monad m => FilePath -> Task m (Timestamped FilePath)
 toTimestamped = pure . timestamped
+
+toAbsolute :: Monad m => FilePath -> Task m FilePath
+toAbsolute p = nonCached \Context{..} ->
+    pure (inputDir </> currentDir </> p)
+
+getOutputDir :: Monad m => Task m FilePath
+getOutputDir = nonCached \Context{..} ->
+    pure outputDir

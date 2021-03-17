@@ -48,6 +48,10 @@ type Watch a    = (a, Cache)
 shouldForce :: Context -> FilePath -> Bool
 shouldForce ctx x = or (Glob.match <$> forceFiles ctx <*> pure x)
 
+shouldConsider :: [Pattern] -> FilePath -> Bool
+shouldConsider pats p =
+    not (or [Glob.match pat p | pat <- pats])
+
 -- TODO: investigate whether we need glob at all?
 --       It doesn't look like it's very fast,
 --       and it doesn't allow you to do conditionals with {}
@@ -61,6 +65,7 @@ match :: (AchilleIO m, Binary a)
 match pattern (t :: FilePath -> Task m b) = Task \ctx -> do
     let (cached, c'@Context{..}) = fromContext ctx
     paths <- AchilleIO.glob (inputDir </> currentDir) pattern
+             <&> filter (shouldConsider ignore)
              >>= filterM (AchilleIO.doesFileExist . ((inputDir </> currentDir) </>))
     case cached :: Maybe (Match b) of
         Nothing -> do
@@ -87,6 +92,7 @@ match_ :: AchilleIO m => Pattern -> (FilePath -> Task m a) -> Task m ()
 match_ pattern t = Task \ctx -> do
     let (result, c'@Context{..}) = fromContext ctx 
     paths <- AchilleIO.glob (inputDir </> currentDir) pattern
+             <&> filter (shouldConsider ignore)
              >>= filterM (AchilleIO.doesFileExist . ((inputDir </> currentDir) </>))
     case result :: Maybe MatchVoid of
         Nothing -> do
@@ -208,6 +214,7 @@ runTask force config t = do
                       timestamp
                       force
                       NoMust
+                      (Config.ignore config)
     (v, cache') <-
         if cacheExists then do
             handle <- liftIO $ openBinaryFile (Config.cacheFile config) ReadMode

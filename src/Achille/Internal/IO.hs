@@ -9,6 +9,7 @@ module Achille.Internal.IO
     , doesFileExist
     , doesDirExist
     , callCommand
+    , readCommand
     , log
     , glob
     , getModificationTime
@@ -50,6 +51,8 @@ class (Monad m, MonadFail m) => AchilleIO m where
     doesDirExist        :: FilePath -> m Bool
     -- | Run a shell command in a new process.
     callCommand         :: String   -> m ()
+    -- | Run a shell command in a new process.
+    readCommand         :: String   -> [String] -> m String
     -- | Log a string to stdout.
     log                 :: String   -> m ()
     -- | Find all paths matching a given globpattern, relative to a given directory.
@@ -65,17 +68,18 @@ ensureDirExists =
 
 
 instance AchilleIO IO where
-    readFile            = BS.readFile
-    readFileLazy        = LBS.readFile
-    copyFile from to    = ensureDirExists to >> Directory.copyFile from to
-    writeFile to x      = ensureDirExists to >> BS.writeFile to x
-    writeFileLazy to x  = ensureDirExists to >> LBS.writeFile to x
-    doesFileExist       = Directory.doesFileExist
-    doesDirExist        = Directory.doesDirectoryExist
-    callCommand         = Process.callCommand
-    log                 = Prelude.putStrLn
-    glob dir pattern    =
+    readFile             = BS.readFile
+    readFileLazy         = LBS.readFile
+    copyFile from to     = ensureDirExists to >> Directory.copyFile from to
+    writeFile to x       = ensureDirExists to >> BS.writeFile to x
+    writeFileLazy to x   = ensureDirExists to >> LBS.writeFile to x
+    doesFileExist        = Directory.doesFileExist
+    doesDirExist         = Directory.doesDirectoryExist
+    callCommand          = Process.callCommand
+    readCommand cmd args = Process.readProcess cmd args []
+    log                  = Prelude.putStrLn
+    glob dir pattern     =
         Directory.withCurrentDirectory dir $
             Glob.globDir1 pattern ""
             >>= mapM Directory.makeRelativeToCurrentDirectory
-    getModificationTime = Directory.getModificationTime
+    getModificationTime  = Directory.getModificationTime

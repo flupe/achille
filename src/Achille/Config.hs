@@ -5,8 +5,9 @@ module Achille.Config
     ) where
 
 
-import System.FilePath (FilePath)
-import Data.Default    (Default, def)
+import System.FilePath      (FilePath)
+import System.FilePath.Glob (Pattern)
+import Data.Default         (Default, def)
 
 
 -- | achille configuration datatype.
@@ -18,6 +19,7 @@ data Config = Config
     , cacheFile  :: FilePath      -- ^ Path where the cache is stored.
                                   --   Defaults to @".cache"@.
     , deployCmd  :: Maybe String  -- ^ Command to run for deploying the result.
+    , ignore     :: [Pattern]
     }
 
 
@@ -27,4 +29,5 @@ instance Default Config where
         , outputDir  = "_site"
         , cacheFile  = ".cache"
         , deployCmd  = Nothing
+        , ignore     = []
         }
