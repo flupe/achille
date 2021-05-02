@@ -2,6 +2,7 @@
 {-# LANGUAGE TypeSynonymInstances  #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings     #-}
 
 -- | Defines convenience recipes for reading and writing documents with pandoc.
 module Achille.Task.Pandoc
@@ -26,14 +27,18 @@ import System.Directory (copyFile, createDirectoryIfMissing, withCurrentDirector
 import System.FilePath
 import Text.Pandoc      hiding (nonCached, getReader)
 import Data.Aeson.Types (FromJSON)
-import Data.Frontmatter (parseYamlFrontmatter, IResult(..))
+import Data.Attoparsec.ByteString
+import Data.Attoparsec.ByteString.Char8
+import Data.Yaml hiding (Parser)
+import Data.ByteString as ByteString hiding (pack)
+import Control.Applicative ((<|>))
 
-import qualified Data.Text.IO                     as Text
-import qualified System.FilePath.Glob             as Glob
-import qualified Data.ByteString                  as ByteString
-import qualified Data.ByteString.Lazy             as LazyByteString
-import qualified System.FilePath                  as Path
-import qualified System.Process                   as Process
+import qualified Data.Text.IO          as Text
+import qualified System.FilePath.Glob  as Glob
+import qualified Data.ByteString.Char8 as ByteString (pack)
+import qualified Data.ByteString.Lazy  as LazyByteString
+import qualified System.FilePath       as Path
+import qualified System.Process        as Process
 
 import           Achille.Config
 import           Achille.Internal hiding (currentDir)
@@ -51,6 +56,19 @@ getReader p = byExt (takeExtension p)
         byExt ".rst"      = Just $ TextReader readRST
         byExt ".org"      = Just $ TextReader readOrg
         byExt _           = Nothing
+
+parseYaml :: FromJSON a => ByteString -> Either String (a, ByteString)
+parseYaml bs = case parse parser bs of
+  Done i a   -> Right (a , i)
+  Fail _ _ e -> Left e
+  where
+    parser = do
+      bs <- ByteString.pack <$> (separator *> manyTill anyChar separator <|> pure "")
+      case decodeEither' bs of
+        Left e  -> fail (show e)
+        Right v -> pure v
+    separator :: Parser ()
+    separator = string "---" >> endOfLine
 
 
 -- | Recipe for loading a pandoc document
@@ -87,9 +105,9 @@ readPandocMetadataWith :: (MonadIO m, MonadFail m, FromJSON a)
 readPandocMetadataWith ropts p = nonCached \Context{..} -> do
     contents <- liftIO $ ByteString.readFile (inputDir </> currentDir </> p)
     (meta, remaining) <-
-            case parseYamlFrontmatter contents of
-                Done i a -> pure (a, i)
-                _        -> fail $ "error while loading meta of " <> p
+            case parseYaml contents of
+                Right res -> pure res
+                Left  err -> fail $ "error while loading meta of " <> p <> ": " <> show err
     (meta,) <$> case getReader p of
         Just (ByteStringReader f) -> liftIO $
             runIOorExplode $ f ropts (LazyByteString.fromStrict remaining)
@@ -105,9 +123,9 @@ readAbsPandocMetadataWith :: (MonadIO m, MonadFail m, FromJSON a)
 readAbsPandocMetadataWith ropts p = nonCached \Context{..} -> do
     contents <- liftIO $ ByteString.readFile p
     (meta, remaining) <-
-            case parseYamlFrontmatter contents of
-                Done i a -> pure (a, i)
-                _        -> fail $ "error while loading meta of " <> p
+            case parseYaml contents of
+                Right res -> pure res
+                Left  err -> fail $ "error while loading meta of " <> p <> ": " <> show err
     (meta,) <$> case getReader p of
         Just (ByteStringReader f) -> liftIO $
             runIOorExplode $ f ropts (LazyByteString.fromStrict remaining)

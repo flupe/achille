@@ -55,10 +55,11 @@ library
 
   if flag(pandoc)
     exposed-modules: Achille.Task.Pandoc
-    build-depends:   pandoc                >= 2.9.2  && < 2.10
-                   , pandoc-types          >= 1.20   && < 1.21
-                   , frontmatter           >= 0.1.0  && < 0.2
-                   , aeson                 >= 1.4.7  && < 1.5
+    build-depends:   pandoc
+                   , pandoc-types
+                   , attoparsec
+                   , yaml
+                   , aeson
 
 test-suite test-achille
   default-language:  Haskell2010

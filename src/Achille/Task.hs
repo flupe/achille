@@ -7,6 +7,7 @@ module Achille.Task
     , getCurrentDir
     , readText
     , readBS
+    , readLBS
     , saveFileAs
     , copyFile
     , copyFileAs
@@ -28,6 +29,8 @@ import Data.Text               (Text, pack)
 import Data.Text.Encoding      (decodeUtf8)
 import Data.ByteString         (ByteString)
 import System.FilePath         ((</>))
+
+import qualified Data.ByteString.Lazy as LBS
 
 import           Achille.Config
 import           Achille.Writable (Writable)
@@ -65,6 +68,11 @@ readText p = nonCached \Context{..} ->
 readBS :: AchilleIO m => FilePath -> Task m ByteString
 readBS p = nonCached \Context{..} ->
     AchilleIO.readFile (inputDir </> currentDir </> p)
+
+-- | Recipe retrieving the contents of the input file as a lazy bytestring.
+readLBS :: AchilleIO m => FilePath -> Task m LBS.ByteString
+readLBS p = nonCached \Context{..} ->
+    AchilleIO.readFileLazy (inputDir </> currentDir </> p)
 
 -- | Recipe for saving a value to a file, using the path modifier applied to the input filepath.
 --   Returns the path of the output file.
