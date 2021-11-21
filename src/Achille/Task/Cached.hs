@@ -13,6 +13,8 @@ module Achille.Task.Cached
     , with
     , watch
     , runTask
+    , shouldForce
+    , shouldConsider
     ) where
 
 
