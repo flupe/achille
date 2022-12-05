@@ -22,7 +22,7 @@ source-repository head
 
 flag pandoc
   description: Enable Pandoc and Front Matter header support
-  default: True
+  default: False
 
 library
   default-language:  Haskell2010
@@ -31,26 +31,28 @@ library
                     , LambdaCase
                     , TupleSections
                     , CPP
-  exposed-modules:   Achille
-                   , Achille.Config
-                   , Achille.Writable
-                   , Achille.Timestamped
-                   , Achille.Internal
-                   , Achille.Internal.IO
-                   , Achille.Task
-                   , Achille.Task.Cached
-  build-depends:     base                  >= 4.11    && < 5
-                   , process               >= 1.6.9   && < 1.7
-                   , filepath              >= 1.4.2   && < 1.5
-                   , directory             >= 1.3.6   && < 1.4
-                   , Glob                  >= 0.10.1  && < 0.11
-                   , binary                >= 0.8.7   && < 0.9
-                   , bytestring            >= 0.10.10 && < 0.11
-                   , text                  >= 1.2.4   && < 1.3
-                   , time                  >= 1.9.3   && < 1.10
-                   , data-default          >= 0.7.1   && < 0.8
-                   , optparse-applicative  >= 0.15.1  && < 0.16
-                   , binary-instances      >= 1.0.0   && < 1.1
+  exposed-modules:   Achille.Recipe
+                   -- , Achille.Config
+                   -- , Achille.Writable
+                   -- , Achille.Timestamped
+                   -- , Achille.Internal
+                   -- , Achille.Internal.IO
+                   -- , Achille.Task
+                   -- , Achille.Task.Cached
+                   -- , Achi
+  build-depends:     base
+                   , process
+                   , filepath
+                   , directory
+                   , Glob
+                   , binary
+                   , bytestring
+                   , text
+                   , time
+                   , data-default
+                   , optparse-applicative
+                   , binary-instances
+                   , containers
 
 
   if flag(pandoc)
