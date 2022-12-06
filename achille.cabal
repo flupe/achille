@@ -53,6 +53,8 @@ library
                    , optparse-applicative
                    , binary-instances
                    , containers
+                   , linear-smc
+                   , constraints
 
 
   if flag(pandoc)
