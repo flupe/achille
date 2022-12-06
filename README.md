@@ -1,5 +1,9 @@
 ## achille
 
+[![View on Hackage](https://img.shields.io/hackage/v/achille?style=flat-square)][hackage]
+
+[hackage]: https://hackage.haskell.org/package/achille
+
 **achille** is an embededd Haskell DSL for building incremental static site generators.
 
 It has a very simple abstraction for composable build rules.
