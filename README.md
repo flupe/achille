@@ -1,12 +1,9 @@
 ## achille
 
-**achille** is a tiny Haskell library for building static site generators.
-It is in spirit a direct successor to [Hakyll].
+**achille** is an embededd Haskell DSL for building incremental static site generators.
 
-[Hakyll]: https://jaspervdj.be/hakyll/
+It has a very simple abstraction for composable build rules.
+A straightforward implementation with very few dependencies.
 
-It is self-contained, has few dependencies and a very simple abstraction for composing
-build rules. It also offers fast fine-grained incremental builds.
-
-For more information how **achille** works and how to use it, you can [read the
+For more information about how **achille** works and how to use it, you can [read the
 documentation](https://acatalepsie.fr/projects/achille/).
