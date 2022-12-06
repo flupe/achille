@@ -1,6 +1,14 @@
 {-# LANGUAGE InstanceSigs, DeriveGeneric, DeriveAnyClass, TypeFamilies, Rank2Types, TypeOperators, ScopedTypeVariables, FlexibleContexts #-}
 
--- | Core recipe definition.
+{-|
+Module      : Achille.Recipe
+Description : Basic building blocks for the @Recipe@ abstraction
+Copyright   : (c) flupe, 2022
+License     : MIT
+Maintainer  : lucas@escot.me
+
+This module defines the @Recipe m@ abstraction and associated properties.
+-}
 module Achille.Recipe where
 
 import Prelude
@@ -13,9 +21,6 @@ import Control.Category.Constrained
 import Data.Constraint
 import Data.Constraint.Deferrable
 
--- | The cache received by recipes. It is a list in order to make composition associative.
-newtype Cache = Cache { chunks :: [ByteString] } deriving (Generic, Binary)
-
 -- | Context in which a recipe is run.
 data Context = Context
   { tagged :: Map String Cache -- ^ A map of caches, used for expensive computations that 
@@ -25,23 +30,41 @@ data Context = Context
 -- | The recipe abstraction.
 newtype Recipe m a b = Recipe { runRecipe :: Context -> Cache -> a -> Diff a -> m (b, Diff b, Cache) }
 
+-- | A task is a recipe that takes no input.
+type Task m = Recipe m ()
 
+
+-- * Cache
+--
+-- $cache
+-- All recipes are run with a local cache that they can use freely to remember
+-- information between runs.
+
+-- | The cache received by recipes. It is a list in order to make composition associative.
+newtype Cache = Cache { chunks :: [ByteString] } deriving (Generic, Binary)
+
+-- | The empty cache.
 emptyCache :: Cache
 emptyCache = Cache []
-
 
 -- | Splits the cache in two.
 splitCache :: Cache -> (Cache, Cache)
 splitCache (Cache []) = (emptyCache, emptyCache)
 splitCache (Cache (c:cs)) = (Binary.decode c, Cache cs)
 
-
 -- | Combines two caches.
 joinCache :: Cache -> Cache -> Cache
 joinCache hd (Cache cs) = Cache (Binary.encode hd : cs)
 
 
--- | Class for things that have a diff
+-- * Diffing
+--
+-- $diffing
+-- Some truly crude information about changes of values.
+
+-- | Class for things that have a diff.
+-- By default, we only know whether the value is new, not what it used to be
+-- or how it has changed.
 class Diffable a where
   type Diff a
   type Diff a = Bool
@@ -56,7 +79,6 @@ instance (Diffable a, Diffable b) => Diffable (a, b) where
   type Diff (a, b) = (Diff a, Diff b)
   subDiffable = Dict
 
-
 instance ProdObj Diffable where
   objprod :: forall z a b. (z ~ (a, b), Diffable z) => Dict (Diffable a, Diffable b)
   objprod = subDiffable
@@ -66,6 +88,7 @@ instance ProdObj Diffable where
 
   objunit :: Dict (Diffable ())
   objunit = Dict
+
 
 
 instance Monad m => Category (Recipe m) where
@@ -105,3 +128,14 @@ instance Monad m => Monoidal (Recipe m) where
 
   unitor' :: Diffable a => Recipe m (a ⊗ ()) a
   unitor' = Recipe \ctx cache (x, ()) (dx, ()) -> pure (x, dx, cache)
+
+
+instance Monad m => Cartesian (Recipe m) where
+  exl :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) a
+  exl = Recipe \ctx cache (x, y) (dx, dy) -> pure (x, dx, cache)
+
+  exr :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) b
+  exr = Recipe \ctx cache (x, y) (dx, dy) -> pure (y, dy, cache)
+
+  dup :: Diffable a => Recipe m a (a ⊗ a)
+  dup = Recipe \ctx cache x dx -> pure ((x, x), (dx, dx), cache)
