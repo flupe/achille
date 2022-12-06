@@ -26,7 +26,8 @@ library
   default-extensions: BlockArguments
                     , LambdaCase
                     , TupleSections
-  exposed-modules: Achille.Recipe
+  exposed-modules: Achille
+                 , Achille.Recipe
   build-depends: base
                , binary
                , bytestring
