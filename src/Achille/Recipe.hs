@@ -1,4 +1,12 @@
-{-# LANGUAGE InstanceSigs, DeriveGeneric, DeriveAnyClass, TypeFamilies, Rank2Types, TypeOperators, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE Rank2Types #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE DefaultSignatures #-}
 
 {-|
 Module      : Achille.Recipe
@@ -28,7 +36,9 @@ data Context = Context
   }
 
 -- | The recipe abstraction.
-newtype Recipe m a b = Recipe { runRecipe :: Context -> Cache -> a -> Diff a -> m (b, Diff b, Cache) }
+-- A recipe runs in a given environment, using a local cache. It executes an
+-- action in @m@, returns a value and updates the cache.
+newtype Recipe m a b = Recipe { runRecipe :: Context -> Cache -> Value a -> m (Value b, Cache) }
 
 -- | A task is a recipe that takes no input.
 type Task m = Recipe m ()
@@ -69,15 +79,22 @@ class Diffable a where
   type Diff a
   type Diff a = Bool
 
+  -- | Given a value, tell whether it has changed since the last run.
+  hasChanged :: Value a -> Bool
+  default hasChanged :: (Diff a ~ Bool) => Value a -> Bool
+  hasChanged (_, dx) = dx
+
   subDiffable :: forall b c. (Diffable (b, c), a ~ (b, c)) => Dict (Diffable b, Diffable c)
   subDiffable = error "not a product"
 
 instance Diffable () where
   type Diff () = ()
+  hasChanged _ = False
 
 instance (Diffable a, Diffable b) => Diffable (a, b) where
   type Diff (a, b) = (Diff a, Diff b)
   subDiffable = Dict
+  hasChanged ((x, y), (dx, dy)) = hasChanged (x, dx) || hasChanged (y, dy)
 
 instance ProdObj Diffable where
   objprod :: forall z a b. (z ~ (a, b), Diffable z) => Dict (Diffable a, Diffable b)
@@ -89,53 +106,54 @@ instance ProdObj Diffable where
   objunit :: Dict (Diffable ())
   objunit = Dict
 
+type Value a = (a, Diff a)
 
 
 instance Monad m => Category (Recipe m) where
   type Obj (Recipe m) = Diffable
 
   id :: Diffable a => Recipe m a a
-  id = Recipe \ctx cache x dx -> pure (x, dx, cache)
+  id = Recipe \ctx cache v -> pure (v, cache)
 
   (∘) :: (Diffable a, Diffable b, Diffable c) => Recipe m b c -> Recipe m a b -> Recipe m a c
-  Recipe g ∘ Recipe f = Recipe \ctx cache x dx -> do
+  Recipe g ∘ Recipe f = Recipe \ctx cache vx -> do
     let (cf, cg) = splitCache cache
-    (y, dy, cf') <- f ctx cf x dx
-    (z, dz, cg') <- g ctx cg y dy
-    pure (z, dz, joinCache cf' cg')
+    (vy, cf') <- f ctx cf vx
+    (vz, cg') <- g ctx cg vy
+    pure (vz, joinCache cf' cg')
 
 
 instance Monad m => Monoidal (Recipe m) where
   (×) :: (Diffable a, Diffable b, Diffable c, Diffable d)
       => Recipe m a b -> Recipe m c d -> Recipe m (a ⊗ c) (b ⊗ d)
-  Recipe f × Recipe g = Recipe\ctx cache (x, y) (dx, dy) -> do
+  Recipe f × Recipe g = Recipe\ctx cache ((x, y), (dx, dy)) -> do
     let (cf, cg) = splitCache cache
-    (z, dz, cf') <- f ctx cf x dx
-    (w, dw, cg') <- g ctx cg y dy
-    pure ((z, w), (dz, dw), joinCache cf' cg')
+    ((z, dz), cf') <- f ctx cf (x, dx)
+    ((w, dw), cg') <- g ctx cg (y, dy)
+    pure (((z, w), (dz, dw)), joinCache cf' cg')
 
   swap :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) (b ⊗ a)
-  swap = Recipe \ctx cache (x, y) (dx, dy) -> pure ((y, x), (dy, dx), cache)
+  swap = Recipe \ctx cache ((x, y), (dx, dy)) -> pure (((y, x), (dy, dx)), cache)
 
   assoc :: (Diffable a, Diffable b, Diffable c) => Recipe m ((a ⊗ b) ⊗ c) (a ⊗ (b ⊗ c))
-  assoc = Recipe \ctx cache ((x, y), z) ((dx, dy), dz) -> pure ((x, (y, z)), (dx, (dy, dz)), cache)
+  assoc = Recipe \ctx cache (((x, y), z), ((dx, dy), dz)) -> pure (((x, (y, z)), (dx, (dy, dz))), cache)
 
   assoc' :: (Diffable a, Diffable b, Diffable c) => Recipe m (a ⊗ (b ⊗ c)) ((a ⊗ b) ⊗ c)
-  assoc' = Recipe \ctx cache (x, (y, z)) (dx, (dy, dz)) -> pure (((x, y), z), ((dx, dy), dz), cache)
+  assoc' = Recipe \ctx cache ((x, (y, z)), (dx, (dy, dz))) -> pure ((((x, y), z), ((dx, dy), dz)), cache)
 
   unitor :: Diffable a => Recipe m a (a ⊗ ())
-  unitor = Recipe \ctx cache x dx -> pure ((x, ()), (dx, ()), cache)
+  unitor = Recipe \ctx cache (x, dx) -> pure (((x, ()), (dx, ())), cache)
 
   unitor' :: Diffable a => Recipe m (a ⊗ ()) a
-  unitor' = Recipe \ctx cache (x, ()) (dx, ()) -> pure (x, dx, cache)
+  unitor' = Recipe \ctx cache ((x, ()), (dx, ())) -> pure ((x, dx), cache)
 
 
 instance Monad m => Cartesian (Recipe m) where
   exl :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) a
-  exl = Recipe \ctx cache (x, y) (dx, dy) -> pure (x, dx, cache)
+  exl = Recipe \ctx cache ((x, y), (dx, dy)) -> pure ((x, dx), cache)
 
   exr :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) b
-  exr = Recipe \ctx cache (x, y) (dx, dy) -> pure (y, dy, cache)
+  exr = Recipe \ctx cache ((x, y), (dx, dy)) -> pure ((y, dy), cache)
 
   dup :: Diffable a => Recipe m a (a ⊗ a)
-  dup = Recipe \ctx cache x dx -> pure ((x, x), (dx, dx), cache)
+  dup = Recipe \ctx cache (x, dx) -> pure (((x, x), (dx, dx)), cache)
