@@ -1,13 +1,12 @@
 -- | Top-level module for achille, providing the CLI and task runner.
 module Achille
-    ( module Achille.Recipe
+    ( module Achille.Config
+    , module Achille.Recipe
     ) where
 
+import Achille.Config
 import Achille.Recipe (Recipe, runRecipe)
 
--- import Achille.Config
-
--- 
 -- -- | CLI commands.
 -- data AchilleCommand
 --     = Build [String]  -- ^ Build the site once
