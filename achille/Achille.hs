@@ -5,7 +5,7 @@ module Achille
     ) where
 
 import Achille.Config
-import Achille.Recipe (Recipe, runRecipe)
+import Achille.Recipe (Recipe, Task, task, runRecipe)
 
 -- -- | CLI commands.
 -- data AchilleCommand

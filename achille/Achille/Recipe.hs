@@ -17,31 +17,41 @@ Maintainer  : lucas@escot.me
 
 This module defines the @Recipe m@ abstraction and associated properties.
 -}
-module Achille.Recipe where
+module Achille.Recipe
+  ( Context(..)
+  , Recipe(..)
+  , Task
+  , task
+  , Cache
+  , emptyCache
+  , splitCache
+  , joinCache
+  , fromCache
+  , toCache
+  , Diffable(Diff, hasChanged)
+  , Value
+  ) where
 
-import Prelude
-import Data.Map hiding ((\\))
-import Data.Binary
-import Data.ByteString.Lazy as LBS
-import GHC.Generics
-import qualified Data.Binary as Binary
 import Control.Category.Constrained
+import Data.Binary (Binary)
+import Data.ByteString.Lazy (ByteString)
 import Data.Constraint
 import Data.Constraint.Deferrable
+import Data.Map (Map)
+import GHC.Generics
+
+import Data.Binary          qualified as Binary
+import Data.ByteString.Lazy qualified as LBS
 
 -- | Context in which a recipe is run.
 data Context = Context
-  { tagged :: Map String Cache -- ^ A map of caches, used for expensive computations that 
-                               -- should be made insensitive to code refactoring
+  {
   }
 
 -- | The recipe abstraction.
 -- A recipe runs in a given environment, using a local cache. It executes an
 -- action in @m@, returns a value and updates the cache.
 newtype Recipe m a b = Recipe { runRecipe :: Context -> Cache -> Value a -> m (Value b, Cache) }
-
--- | A task is a recipe that takes no input.
-type Task m = Recipe m ()
 
 
 -- * Cache
@@ -66,6 +76,18 @@ splitCache (Cache (c:cs)) = (Binary.decode c, Cache cs)
 joinCache :: Cache -> Cache -> Cache
 joinCache hd (Cache cs) = Cache (Binary.encode hd : cs)
 
+-- | Retrieve a value from cache.
+fromCache :: Binary a => Cache -> Maybe a
+fromCache (Cache []) = Nothing
+fromCache (Cache (c:cs)) =
+  case Binary.decodeOrFail c of
+    Left _ -> Nothing
+    Right (_, _, x) -> Just x
+
+-- | Writes a value to cache.
+toCache :: Binary a => a -> Cache
+toCache x = Cache [Binary.encode x]
+
 
 -- * Diffing
 --
@@ -84,38 +106,32 @@ class Diffable a where
   default hasChanged :: (Diff a ~ Bool) => Value a -> Bool
   hasChanged (_, dx) = dx
 
-  subDiffable :: forall b c. (Diffable (b, c), a ~ (b, c)) => Dict (Diffable b, Diffable c)
-  subDiffable = error "not a product"
-
 instance Diffable () where
   type Diff () = ()
   hasChanged _ = False
 
 instance (Diffable a, Diffable b) => Diffable (a, b) where
   type Diff (a, b) = (Diff a, Diff b)
-  subDiffable = Dict
+
+  hasChanged :: Value (a, b) -> Bool
   hasChanged ((x, y), (dx, dy)) = hasChanged (x, dx) || hasChanged (y, dy)
 
-instance ProdObj Diffable where
-  objprod :: forall z a b. (z ~ (a, b), Diffable z) => Dict (Diffable a, Diffable b)
-  objprod = subDiffable
+instance Diffable a => Diffable [a] where
+  type Diff [a] = [Diff a]
 
-  prodobj :: (Diffable a, Diffable b) => Dict (Diffable (a, b))
-  prodobj = Dict
-
-  objunit :: Dict (Diffable ())
-  objunit = Dict
+  hasChanged :: Value [a] -> Bool
+  hasChanged (xs, dxs) = any hasChanged (zip xs dxs)
+    -- NOTE: this only works so long are they are the same length
+    -- TODO: check if this is always the case
 
 type Value a = (a, Diff a)
 
 
 instance Monad m => Category (Recipe m) where
-  type Obj (Recipe m) = Diffable
-
-  id :: Diffable a => Recipe m a a
+  id :: Recipe m a a
   id = Recipe \ctx cache v -> pure (v, cache)
 
-  (∘) :: (Diffable a, Diffable b, Diffable c) => Recipe m b c -> Recipe m a b -> Recipe m a c
+  (∘) :: Recipe m b c -> Recipe m a b -> Recipe m a c
   Recipe g ∘ Recipe f = Recipe \ctx cache vx -> do
     let (cf, cg) = splitCache cache
     (vy, cf') <- f ctx cf vx
@@ -124,36 +140,42 @@ instance Monad m => Category (Recipe m) where
 
 
 instance Monad m => Monoidal (Recipe m) where
-  (×) :: (Diffable a, Diffable b, Diffable c, Diffable d)
-      => Recipe m a b -> Recipe m c d -> Recipe m (a ⊗ c) (b ⊗ d)
+  (×) :: Recipe m a b -> Recipe m c d -> Recipe m (a ⊗ c) (b ⊗ d)
   Recipe f × Recipe g = Recipe\ctx cache ((x, y), (dx, dy)) -> do
     let (cf, cg) = splitCache cache
     ((z, dz), cf') <- f ctx cf (x, dx)
     ((w, dw), cg') <- g ctx cg (y, dy)
     pure (((z, w), (dz, dw)), joinCache cf' cg')
 
-  swap :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) (b ⊗ a)
+  swap :: Recipe m (a ⊗ b) (b ⊗ a)
   swap = Recipe \ctx cache ((x, y), (dx, dy)) -> pure (((y, x), (dy, dx)), cache)
 
-  assoc :: (Diffable a, Diffable b, Diffable c) => Recipe m ((a ⊗ b) ⊗ c) (a ⊗ (b ⊗ c))
+  assoc :: Recipe m ((a ⊗ b) ⊗ c) (a ⊗ (b ⊗ c))
   assoc = Recipe \ctx cache (((x, y), z), ((dx, dy), dz)) -> pure (((x, (y, z)), (dx, (dy, dz))), cache)
 
-  assoc' :: (Diffable a, Diffable b, Diffable c) => Recipe m (a ⊗ (b ⊗ c)) ((a ⊗ b) ⊗ c)
+  assoc' :: Recipe m (a ⊗ (b ⊗ c)) ((a ⊗ b) ⊗ c)
   assoc' = Recipe \ctx cache ((x, (y, z)), (dx, (dy, dz))) -> pure ((((x, y), z), ((dx, dy), dz)), cache)
 
-  unitor :: Diffable a => Recipe m a (a ⊗ ())
+  unitor :: Recipe m a (a ⊗ ())
   unitor = Recipe \ctx cache (x, dx) -> pure (((x, ()), (dx, ())), cache)
 
-  unitor' :: Diffable a => Recipe m (a ⊗ ()) a
+  unitor' :: Recipe m (a ⊗ ()) a
   unitor' = Recipe \ctx cache ((x, ()), (dx, ())) -> pure ((x, dx), cache)
 
 
 instance Monad m => Cartesian (Recipe m) where
-  exl :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) a
+  exl :: Recipe m (a ⊗ b) a
   exl = Recipe \ctx cache ((x, y), (dx, dy)) -> pure ((x, dx), cache)
 
-  exr :: (Diffable a, Diffable b) => Recipe m (a ⊗ b) b
+  exr :: Recipe m (a ⊗ b) b
   exr = Recipe \ctx cache ((x, y), (dx, dy)) -> pure ((y, dy), cache)
 
-  dup :: Diffable a => Recipe m a (a ⊗ a)
+  dup :: Recipe m a (a ⊗ a)
   dup = Recipe \ctx cache (x, dx) -> pure (((x, x), (dx, dx)), cache)
+
+-- | A task is a recipe with no input.
+type Task m = Recipe m ()
+
+-- | Lift a task into a recipe accepting any input.
+task :: Task m b -> Recipe m a b
+task (Recipe r) = Recipe \cache ctx _ -> r cache ctx ((), ())
