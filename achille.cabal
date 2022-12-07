@@ -40,6 +40,7 @@ library
                  , Achille.Recipe
                  , Achille.Recipe.Base
                  , Achille.Recipe.List
+                 , Achille.Recipe.Match
                  , Achille.Syntax
   build-depends: base
                , binary

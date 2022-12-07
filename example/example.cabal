@@ -7,6 +7,8 @@ executable example
   main-is:       Main.hs
   default-extensions: LinearTypes
                     , QualifiedDo
+                    , BlockArguments
+                    , OverloadedStrings
   build-depends: base
                , achille
 

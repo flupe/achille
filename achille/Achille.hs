@@ -2,17 +2,15 @@
 module Achille
     ( module Achille.Config
     , module Achille.Syntax
-    , module Achille.Recipe.Base
     , achille
     , achilleWith
     , Recipe
     , Task
-    , task
     ) where
 
 import Achille.Config
 import Achille.CLI    (achille, achilleWith)
-import Achille.Recipe (Recipe, Task, task)
+import Achille.Recipe (Recipe, Task)
 import Achille.Recipe.Base
 import Achille.Syntax
 
