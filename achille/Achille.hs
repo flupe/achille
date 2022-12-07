@@ -2,6 +2,7 @@
 module Achille
     ( module Achille.Config
     , module Achille.Syntax
+    , module Achille.Recipe.Base
     , achille
     , achilleWith
     , Recipe
@@ -12,6 +13,7 @@ module Achille
 import Achille.Config
 import Achille.CLI    (achille, achilleWith)
 import Achille.Recipe (Recipe, Task, task)
+import Achille.Recipe.Base
 import Achille.Syntax
 
 -- -- | CLI commands.
