@@ -1,8 +1,10 @@
 ## achille
 
 [![View on Hackage](https://img.shields.io/hackage/v/achille?style=flat-square)][hackage]
+[![Github Workflow](https://img.shields.io/github/workflow/status/flupe/achille/build?style=flat-square)][ci]
 
 [hackage]: https://hackage.haskell.org/package/achille
+[ci]: https://github.com/flupe/achille/actions/workflows/haskell.yml
 
 **achille** is an embedded Haskell DSL for building incremental static site generators.
 

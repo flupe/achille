@@ -1,0 +1,15 @@
+on:
+  push:
+    branches: [ master ]
+name: build
+jobs:
+  runhaskell:
+    name: Build (cabal) Ubuntu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: haskell/actions/setup@v2
+        with:
+          ghc-version: '9.2.4'
+          cabal-version: 'latest'
+      - run: cabal build achille
