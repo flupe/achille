@@ -5,6 +5,8 @@ build-type:         Simple
 tested-with:        GHC == 9.2.4
 executable example
   main-is:       Main.hs
+  default-extensions: LinearTypes
+                    , QualifiedDo
   build-depends: base
                , achille
 
