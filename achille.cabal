@@ -28,9 +28,12 @@ library
                     , TupleSections
                     , ImportQualifiedPost
   exposed-modules: Achille
+                 , Achille.CLI
+                 , Achille.Config
                  , Achille.IO
                  , Achille.Recipe
-                 , Achille.Config
+                 , Achille.Recipe.List
+                 , Achille.Syntax
   build-depends: base
                , binary
                , bytestring

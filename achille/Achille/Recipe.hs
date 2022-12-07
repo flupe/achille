@@ -30,6 +30,7 @@ module Achille.Recipe
   , toCache
   , Diffable(Diff, hasChanged)
   , Value
+  , vArr
   ) where
 
 import Control.Category.Constrained
@@ -124,6 +125,8 @@ instance Diffable a => Diffable [a] where
     -- NOTE: this only works so long are they are the same length
     -- TODO: check if this is always the case
 
+-- | @Value a@ is an element of type @a@ along with information 
+-- about how it changed since the last run.
 type Value a = (a, Diff a)
 
 
@@ -179,3 +182,7 @@ type Task m = Recipe m ()
 -- | Lift a task into a recipe accepting any input.
 task :: Task m b -> Recipe m a b
 task (Recipe r) = Recipe \cache ctx _ -> r cache ctx ((), ())
+
+-- | Lift a pure function on /values/ to recipe.
+vArr :: Applicative m => (Value a -> Value b) -> Recipe m a b
+vArr f = Recipe \ctx cache va -> pure (f va, cache)
