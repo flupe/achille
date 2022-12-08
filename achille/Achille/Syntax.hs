@@ -14,11 +14,13 @@ This module exports the syntax available to the user to build recipes.
 module Achille.Syntax
   ( Port
   , (>>)
+  , (>>=)
   , task
   , recipe
   -- * Basic operations
   , unit
   , void
+  , copy
   , debug
   -- * List operations
   , sort
@@ -31,9 +33,9 @@ module Achille.Syntax
   , matchFile
   ) where
 
-import Prelude (Ord, Monad, String, Int, (.), undefined)
+import Prelude (Ord, Monad, String, Int, (.), undefined, Bool(False))
 import Control.Category.Constrained ((∘), exr)
-import Control.Category.Linear hiding (unit)
+import Control.Category.Linear hiding (unit, copy)
 import Data.Binary          (Binary)
 import Data.String          (IsString(fromString))
 import System.FilePath      (FilePath)
@@ -41,7 +43,7 @@ import System.FilePath.Glob (Pattern)
 
 import Achille.Diffable (unitV, diff)
 import Achille.IO       (AchilleIO)
-import Achille.Recipe   (Recipe, Task)
+import Achille.Recipe   (Recipe, Task, pureV)
 
 import Control.Category.Linear qualified as Linear
 
@@ -55,19 +57,28 @@ import Achille.Recipe.Match    qualified as Recipe
 -- | A @Port m r a@ represents the output of a recipe, computed in @m@, of type @a@.
 type Port m r a = P (Recipe m) r a
 
-instance IsString a => IsString (P (Recipe m) r a) where
-  fromString = undefined
+instance (Monad m, IsString a) => IsString (P (Recipe m) r a) where
+  fromString s = encode (pureV (fromString s) False) unit
 
 -- | Sequence two outputs by discarding the first one. 
 -- Intended to be used with @QualifiedDo@ to easily discard values.
 (>>) :: Monad m => Port m r a %1 -> Port m r b %1 -> Port m r b
 x >> y = ignore (discard x) y
 
+-- | Poor man's linear @let@.
+(>>=) :: a %1 -> (a %1 -> b) -> b
+x >>= f = f x
+
 -- TODO: see if we can define a typeclass sor that each of the following names
 -- resolves to either @Recipe ...@ or @Port .. %1 -> Port ...@
 
+-- | Discard an output value.
 void :: Monad m => Port m r a %1 -> Port m r ()
 void = discard
+
+-- | Duplicate an output value.
+copy :: Monad m => Port m r a %1 -> (Port m r a, Port m r a)
+copy = Linear.split ∘ Linear.copy
 
 -- | Convert a /closed/ port into a task.
 task :: Monad m => (forall r. Port m r b) -> Task m b

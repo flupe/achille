@@ -24,6 +24,7 @@ module Achille.Recipe
   , toCache
   , vArr
   , liftD
+  , pureV
   ) where
 
 import Control.Category.Constrained
@@ -156,3 +157,6 @@ vArr f = Recipe \ctx cache v -> pure (f v, cache)
 
 liftD :: (Functor m) => m a -> Task m a
 liftD c = Recipe \_ cache _ -> c <&> \x -> ((x, diff x True), cache)
+
+pureV :: Applicative m => a -> Bool -> Task m a
+pureV x b = vArr $ const (x, diff x b)
