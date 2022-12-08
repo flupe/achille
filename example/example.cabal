@@ -9,6 +9,7 @@ executable example
                     , QualifiedDo
                     , BlockArguments
                     , OverloadedStrings
-  build-depends: base
+                    , NoImplicitPrelude
+  build-depends: linear-base
                , achille
 

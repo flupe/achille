@@ -1,20 +1,18 @@
-{-# LANGUAGE TypeSynonymInstances  #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 
 -- | Defines an interface for things that can be written to disk.
 module Achille.Writable where
 
-import Data.Text                as Text
-import qualified Data.Text.Lazy as LT
+import Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
-import qualified Data.Text.Lazy.Encoding as LT (encodeUtf8)
-import Data.ByteString      as BS
-import Data.ByteString.Lazy as LBS
 
-import qualified Data.ByteString.Lazy as ByteString
+import Data.Text.Lazy          qualified as LT
+import Data.Text.Lazy.Encoding qualified as LT (encodeUtf8)
+import Data.ByteString         qualified as BS
+import Data.ByteString.Lazy    qualified as LBS
 
-import Achille.Internal.IO as AchilleIO
+import Achille.IO as AchilleIO
 
 
 -- | Class for things that can be saved.
