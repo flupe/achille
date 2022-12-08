@@ -1,47 +1,52 @@
-{-# LANGUAGE DefaultSignatures #-}
 module Achille.Diffable
-  ( Diffable (..)
+  ( HasChanged
+  , Diff
   , Value
+  , diff
+  , hasChanged
+  , unitV
+  , D
+  , splitList
+  , joinList
+  , splitPair
+  , joinPair
   ) where
 
-class Diffable a where
-  type Diff a
-  type Diff a = Bool
-
-  -- | Given a value, tell whether it has changed since the last run.
-  hasChanged :: Value a -> Bool
-  default hasChanged :: (Diff a ~ Bool) => Value a -> Bool
-  hasChanged (_, dx) = dx
-
-  brandNew :: a -> Diff a
-  default brandNew :: (Diff a ~ Bool) => a -> Diff a
-  brandNew = const True
-
-instance Diffable () where
-  type Diff () = ()
-  hasChanged _ = False
-  brandNew = const ()
-
-instance (Diffable a, Diffable b) => Diffable (a, b) where
-  type Diff (a, b) = (Diff a, Diff b)
-
-  hasChanged :: Value (a, b) -> Bool
-  hasChanged ((x, y), (dx, dy)) = hasChanged (x, dx) || hasChanged (y, dy)
-
-  brandNew :: (a, b) -> Diff (a, b)
-  brandNew (x, y) = (brandNew x, brandNew y)
-
-instance Diffable a => Diffable [a] where
-  type Diff [a] = [Diff a]
-
-  hasChanged :: Value [a] -> Bool
-  hasChanged (xs, dxs) = any hasChanged (zip xs dxs)
-    -- NOTE: this only works so long are they are the same length
-    -- TODO: check if this is always the case
-  
-  brandNew :: [a] -> Diff [a]
-  brandNew = map brandNew
-
--- | @Value a@ is an element of type @a@ along with information 
--- about how it changed since the last run.
+type HasChanged = Bool
 type Value a = (a, Diff a)
+type Diff a = (HasChanged, Maybe (D a))
+
+type family D a
+
+-- | Create a diff out of thin air.
+diff :: a -> Bool -> Diff a
+diff _ b = (b, Nothing)
+
+-- | Whether a value has changed.
+hasChanged :: Value a -> Bool
+hasChanged (_, (b, _)) = b
+
+unitV :: Value ()
+unitV = ((), diff () False)
+
+
+type instance D ()     = ()
+type instance D (a, b) = (Diff a, Diff b)
+type instance D [a]    = [Diff a]
+
+-- | For types that extend the type family @D@, it's possible
+-- to retrieve inner diffing information.
+splitList :: Value [a] -> [Value a]
+splitList (xs, (changed, Nothing)) = [ (x, diff x changed) | x <- xs ]
+splitList (xs, (_      , Just ds)) = zip xs ds
+
+joinList :: [Value a] -> Value [a]
+joinList = undefined
+
+-- | Same here, we retrieve diffing information of each component of the pair.
+splitPair :: Value (a, b) -> (Value a, Value b)
+splitPair ((x, y), (changed, Nothing)) = ((x, diff x changed), (y, diff y changed))
+splitPair ((x, y), (_, Just (dx, dy))) = ((x, dx), (y, dy))
+
+joinPair :: Value a -> Value b -> Value (a, b)
+joinPair = undefined

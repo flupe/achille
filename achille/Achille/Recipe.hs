@@ -27,6 +27,7 @@ module Achille.Recipe
   ) where
 
 import Control.Category.Constrained
+import Data.Bifunctor (first, second)
 import Data.Binary (Binary)
 import Data.ByteString.Lazy (ByteString)
 import Data.Constraint
@@ -40,6 +41,7 @@ import Data.ByteString.Lazy qualified as LBS
 
 import Achille.Diffable
 
+
 -- | Context in which a recipe is run.
 data Context = Context
   {
@@ -49,6 +51,14 @@ data Context = Context
 -- A recipe runs in a given environment, using a local cache. It executes an
 -- action in @m@, returns a value and updates the cache.
 newtype Recipe m a b = Recipe { runRecipe :: Context -> Cache -> Value a -> m (Value b, Cache) }
+
+-- | A task is a recipe with no input.
+type Task m = Recipe m ()
+
+-- | Lift a task into a recipe accepting any input.
+task :: Task m b -> Recipe m a b
+task (Recipe r) = Recipe \cache ctx _ -> r cache ctx unitV
+
 
 
 -- * Cache
@@ -86,15 +96,6 @@ toCache :: Binary a => a -> Cache
 toCache x = Cache [Binary.encode x]
 
 
--- * Diffing
---
--- $diffing
--- Some truly crude information about changes of values.
-
--- | Class for things that have a diff.
--- By default, we only know whether the value is new, not what it used to be
--- or how it has changed.
-
 
 instance Monad m => Category (Recipe m) where
   id :: Recipe m a a
@@ -110,48 +111,48 @@ instance Monad m => Category (Recipe m) where
 
 instance Monad m => Monoidal (Recipe m) where
   (×) :: Recipe m a b -> Recipe m c d -> Recipe m (a ⊗ c) (b ⊗ d)
-  Recipe f × Recipe g = Recipe\ctx cache ((x, y), (dx, dy)) -> do
+  Recipe f × Recipe g = Recipe\ctx cache v -> do
     let (cf, cg) = splitCache cache
-    ((z, dz), cf') <- f ctx cf (x, dx)
-    ((w, dw), cg') <- g ctx cg (y, dy)
-    pure (((z, w), (dz, dw)), joinCache cf' cg')
+    let (vx, vy) = splitPair v
+    (vz, cf') <- f ctx cf vx
+    (vw, cg') <- g ctx cg vy
+    pure (joinPair vz vw, joinCache cf' cg')
 
   swap :: Recipe m (a ⊗ b) (b ⊗ a)
-  swap = Recipe \ctx cache ((x, y), (dx, dy)) -> pure (((y, x), (dy, dx)), cache)
+  swap = Recipe \ctx cache v ->
+    let (vx, vy) = splitPair v in pure (joinPair vy vx, cache)
 
   assoc :: Recipe m ((a ⊗ b) ⊗ c) (a ⊗ (b ⊗ c))
-  assoc = Recipe \ctx cache (((x, y), z), ((dx, dy), dz)) -> pure (((x, (y, z)), (dx, (dy, dz))), cache)
+  assoc = Recipe \ctx cache v ->
+    let ((vx, vy), vz) = first splitPair $ splitPair v
+    in pure (joinPair vx (joinPair vy vz), cache)
 
   assoc' :: Recipe m (a ⊗ (b ⊗ c)) ((a ⊗ b) ⊗ c)
-  assoc' = Recipe \ctx cache ((x, (y, z)), (dx, (dy, dz))) -> pure ((((x, y), z), ((dx, dy), dz)), cache)
+  assoc' = Recipe \ctx cache v ->
+    let (vx, (vy, vz)) = second splitPair $ splitPair v
+    in pure (joinPair (joinPair vx vy) vz, cache)
 
   unitor :: Recipe m a (a ⊗ ())
-  unitor = Recipe \ctx cache (x, dx) -> pure (((x, ()), (dx, ())), cache)
+  unitor = Recipe \ctx cache v -> pure (joinPair v unitV, cache)
 
   unitor' :: Recipe m (a ⊗ ()) a
-  unitor' = Recipe \ctx cache ((x, ()), (dx, ())) -> pure ((x, dx), cache)
+  unitor' = Recipe \ctx cache v -> pure (fst (splitPair v), cache)
 
 
 instance Monad m => Cartesian (Recipe m) where
   exl :: Recipe m (a ⊗ b) a
-  exl = Recipe \ctx cache ((x, y), (dx, dy)) -> pure ((x, dx), cache)
+  exl = Recipe \ctx cache v -> pure (fst (splitPair v), cache)
 
   exr :: Recipe m (a ⊗ b) b
-  exr = Recipe \ctx cache ((x, y), (dx, dy)) -> pure ((y, dy), cache)
+  exr = Recipe \ctx cache v -> pure (snd (splitPair v), cache)
 
   dup :: Recipe m a (a ⊗ a)
-  dup = Recipe \ctx cache (x, dx) -> pure (((x, x), (dx, dx)), cache)
-
--- | A task is a recipe with no input.
-type Task m = Recipe m ()
-
--- | Lift a task into a recipe accepting any input.
-task :: Task m b -> Recipe m a b
-task (Recipe r) = Recipe \cache ctx _ -> r cache ctx ((), ())
+  dup = Recipe \ctx cache v -> pure (joinPair v v, cache)
 
 -- | Lift a pure function on /values/ to recipe.
 vArr :: Applicative m => (Value a -> Value b) -> Recipe m a b
-vArr f = Recipe \ctx cache va -> pure (f va, cache)
+vArr f = Recipe \ctx cache v -> pure (f v, cache)
 
-liftD :: (Functor m, Diffable a) => m a -> Task m a
-liftD c = Recipe \_ cache _ -> c <&> \x -> ((x, brandNew x), cache)
+
+liftD :: (Functor m) => m a -> Task m a
+liftD c = Recipe \_ cache _ -> c <&> \x -> ((x, diff x True), cache)

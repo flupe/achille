@@ -3,6 +3,7 @@ module Achille.CLI where
 
 import Data.Binary (encode)
 
+import Achille.Diffable (unitV)
 import Achille.Config (Config, defaultConfig, cacheFile)
 import Achille.Recipe
 import Achille.IO     (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
@@ -14,7 +15,7 @@ runTask cfg ctx t = do
     hasCache <- doesFileExist $ cacheFile cfg
     if hasCache then toCache <$> readFileLazy (cacheFile cfg) 
                 else pure emptyCache
-  ((v, _), cache') <- runRecipe t ctx cache ((), ())
+  ((v, _), cache') <- runRecipe t ctx cache unitV
   cache' `seq` writeFileLazy (cacheFile cfg) $ encode cache'
   -- TODO: ^ this doesn't look like a very nice way to do file I/O
   --         investigate whether we should stop using lazy bytestrings or smthg

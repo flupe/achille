@@ -25,7 +25,7 @@ module Achille.Syntax
   , sortOn
   , take
   , drop
-  , chunks
+  --, chunks
   -- * Match operations
   , match
   , matchFile
@@ -39,7 +39,7 @@ import Data.String          (IsString(fromString))
 import System.FilePath      (FilePath)
 import System.FilePath.Glob (Pattern)
 
-import Achille.Diffable (Diffable)
+import Achille.Diffable (unitV, diff)
 import Achille.IO       (AchilleIO)
 import Achille.Recipe   (Recipe, Task)
 
@@ -55,7 +55,7 @@ import Achille.Recipe.Match    qualified as Recipe
 -- | A @Port m r a@ represents the output of a recipe, computed in @m@, of type @a@.
 type Port m r a = P (Recipe m) r a
 
-instance (IsString a, Diffable a) => IsString (P (Recipe m) r a) where
+instance IsString a => IsString (P (Recipe m) r a) where
   fromString = undefined
 
 -- | Sequence two outputs by discarding the first one. 
@@ -95,8 +95,8 @@ take = encode . Recipe.take
 drop :: Monad m => Int -> Port m r [a] %1 -> Port m r [a]
 drop = encode . Recipe.drop
 
-chunks :: Monad m => Int -> Port m r [a] %1 -> Port m r [[a]]
-chunks = encode . Recipe.chunks
+-- chunks :: Monad m => Int -> Port m r [a] %1 -> Port m r [[a]]
+-- chunks = encode . Recipe.chunks
 
 -- NOTE: this @forall r.@ quantification inside the function means we cannot use variables bound outside of it.
 --       but that is precisely what I want to allow.
