@@ -6,6 +6,13 @@
 [hackage]: https://hackage.haskell.org/package/achille
 [ci]: https://github.com/flupe/achille/actions/workflows/haskell.yml
 
+> :information_source: The only version available on Hackage is largely outdated and shouldn't be used.
+> This repository contains a WIP rewrite, based on [linear-smc][smc]. By defining `Recipe m` as 
+> a cartesian category, it *should* be possible to provide a very intuitive
+> EDSL syntax. Stay tuned.
+
+[smc]: https://hackage.haskell.org/package/linear-smc-1.0.1
+
 **achille** is an embedded Haskell DSL for building incremental static site generators.
 
 It has a very simple abstraction for composable build rules, a straightforward
