@@ -14,7 +14,6 @@ This module defines the @Recipe m@ abstraction and associated properties.
 module Achille.Recipe
   ( Context(..)
   , Recipe(..)
-
   , Task
   , task
   , Cache
@@ -26,15 +25,20 @@ module Achille.Recipe
   , vArr
   , liftD
   , pureV
+  , valueToTask
   , void
-  -- $monoidal
+    -- * @Recipe m@ is a monoidal category
+    --
+    -- $monoidal
   , (×)
   , swap
   , assoc
   , assoc'
   , unitor
   , unitor'
-  -- $cartesian
+    -- * @Recipe m@ is a cartesian category
+    --
+    -- $cartesian
   , exl
   , exr
   , dup
@@ -124,8 +128,6 @@ instance Monad m => Category (Recipe m) where
     (vz, cg') <- g ctx cg vy
     pure (vz, joinCache cf' cg')
 
--- * @Recipe m@ is a monoidal category
---
 -- $monoidal
 
 (×) :: Monad m => Recipe m a b -> Recipe m c d -> Recipe m (a, c) (b, d)
@@ -157,8 +159,6 @@ unitor' :: Applicative m => Recipe m (a, ()) a
 unitor' = Recipe \ctx cache v -> pure (fst (splitPair v), cache)
 
 
--- * @Recipe m@ forms a cartesian category
--- 
 -- $cartesian
 
 exl :: Applicative m => Recipe m (a, b) a
@@ -177,9 +177,11 @@ f ▵ g = (f × g) . dup
 vArr :: Applicative m => (Value a -> Value b) -> Recipe m a b
 vArr f = Recipe \ctx cache v -> pure (f v, cache)
 
-
 liftD :: (Functor m) => m a -> Task m a
 liftD c = Recipe \_ cache _ -> c <&> \x -> ((x, diff x True), cache)
+
+valueToTask :: Applicative m => Value a -> Task m a
+valueToTask = vArr . const
 
 pureV :: Applicative m => a -> Bool -> Task m a
 pureV x b = vArr $ const (x, diff x b)
