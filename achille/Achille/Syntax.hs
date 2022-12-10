@@ -1,6 +1,4 @@
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE LinearTypes #-}
-{-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE FlexibleInstances #-}
 {- |
 Module      : Achille.Syntax
@@ -12,15 +10,9 @@ Maintainer  : lucas@escot.me
 This module exports the syntax available to the user to build recipes.
 -}
 module Achille.Syntax
-  ( Port
-  , (>>)
-  , (>>=)
-  , task
-  , recipe
+  ( module Achille.Syntax.Core
   -- * Basic operations
-  , unit
   , void
-  , copy
   , debug
   -- * List operations
   , sort
@@ -33,9 +25,7 @@ module Achille.Syntax
   , matchFile
   ) where
 
-import Prelude (Ord, Monad, String, Int, (.), undefined, Bool(False))
-import Control.Category.Constrained ((∘), exr)
-import Control.Category.Linear hiding (unit, copy)
+import Prelude hiding ((>>), take, drop, sort)
 import Data.Binary          (Binary)
 import Data.String          (IsString(fromString))
 import System.FilePath      (FilePath)
@@ -45,66 +35,34 @@ import Achille.Diffable (unitV, diff)
 import Achille.IO       (AchilleIO)
 import Achille.Recipe   (Recipe, Task, pureV)
 
-import Control.Category.Linear qualified as Linear
+import Achille.Syntax.Core
 
 import Achille.Recipe.Base     qualified as Recipe
 import Achille.Recipe.List     qualified as Recipe
 import Achille.Recipe.Match    qualified as Recipe
 
 
--- TODO: define Port as newtype, to not export the definition.
---       (and to avoid orphan instances)
--- | A @Port m r a@ represents the output of a recipe, computed in @m@, of type @a@.
-type Port m r a = P (Recipe m) r a
-
-instance (Monad m, IsString a) => IsString (P (Recipe m) r a) where
-  fromString s = encode (pureV (fromString s) False) unit
-
--- | Sequence two outputs by discarding the first one. 
--- Intended to be used with @QualifiedDo@ to easily discard values.
-(>>) :: Monad m => Port m r a %1 -> Port m r b %1 -> Port m r b
-x >> y = ignore (discard x) y
-
--- | Poor man's linear @let@.
-(>>=) :: a %1 -> (a %1 -> b) -> b
-x >>= f = f x
-
--- TODO: see if we can define a typeclass sor that each of the following names
--- resolves to either @Recipe ...@ or @Port .. %1 -> Port ...@
+instance (Monad m, IsString a) => IsString (Port m r a) where
+  fromString s = apply (pureV (fromString s) False) unit
 
 -- | Discard an output value.
-void :: Monad m => Port m r a %1 -> Port m r ()
-void = discard
+void :: Monad m => Port m r a -> Port m r ()
+void x = x >> unit
 
--- | Duplicate an output value.
-copy :: Monad m => Port m r a %1 -> (Port m r a, Port m r a)
-copy = Linear.split ∘ Linear.copy
+debug :: (Monad m, AchilleIO m) => Port m r String -> Port m r ()
+debug = apply Recipe.debug
 
--- | Convert a /closed/ port into a task.
-task :: Monad m => (forall r. Port m r b) -> Task m b
-task r = exr ∘ decode \x -> merge (x, r)
+sort :: (Monad m, Ord a) => Port m r [a] -> Port m r [a]
+sort = apply Recipe.sort
 
--- | Convert a /closed/ linear function between ports into a recipe.
-recipe :: Monad m => (forall r. Port m r a %1 -> Port m r b) -> Recipe m a b
-recipe = decode
+sortOn :: (Monad m, Ord b) => (a -> b) -> Port m r [a] -> Port m r [a]
+sortOn = apply . Recipe.sortOn
 
-unit :: Monad m => Port m r ()
-unit = Linear.unit
+take :: Monad m => Int -> Port m r [a] -> Port m r [a]
+take = apply . Recipe.take
 
-debug :: (Monad m, AchilleIO m) => Port m r String %1 -> Port m r ()
-debug = encode Recipe.debug
-
-sort :: (Monad m, Ord a) => Port m r [a] %1 -> Port m r [a]
-sort = encode Recipe.sort
-
-sortOn :: (Monad m, Ord b) => (a -> b) -> Port m r [a]  %1 -> Port m r [a]
-sortOn = encode . Recipe.sortOn
-
-take :: Monad m => Int -> Port m r [a] %1 -> Port m r [a]
-take = encode . Recipe.take
-
-drop :: Monad m => Int -> Port m r [a] %1 -> Port m r [a]
-drop = encode . Recipe.drop
+drop :: Monad m => Int -> Port m r [a] -> Port m r [a]
+drop = apply . Recipe.drop
 
 -- chunks :: Monad m => Int -> Port m r [a] %1 -> Port m r [[a]]
 -- chunks = encode . Recipe.chunks
@@ -113,8 +71,8 @@ drop = encode . Recipe.drop
 --       but that is precisely what I want to allow.
 --       should think carefully about that tomorrow
 -- match :: (Monad m, AchilleIO m, Diffable b) => Pattern -> (FilePath -> forall r. Port m r b) %1 -> Port m r [b]
-match :: (Monad m, AchilleIO m, Binary b) => Pattern -> (forall r. Port m r FilePath %1 -> Port m r b) -> Port m r [b]
-match pat f = encode (Recipe.match pat (recipe f)) unit
+match :: (Monad m, AchilleIO m, Binary b) => Pattern -> (forall r. Port m r FilePath -> Port m r b) -> Port m r [b]
+match pat f = apply (Recipe.match pat (recipe f)) unit
 
-matchFile :: (Monad m, AchilleIO m, Binary b) => FilePath -> Port m r b %1 -> Port m r b
+matchFile :: (Monad m, AchilleIO m, Binary b) => FilePath -> Port m r b -> Port m r b
 matchFile = undefined

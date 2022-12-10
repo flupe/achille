@@ -43,6 +43,7 @@ library
                  , Achille.Recipe.List
                  , Achille.Recipe.Match
                  , Achille.Syntax
+                 , Achille.Syntax.Core
                  , Achille.Writable
   build-depends: base                 >= 4.16   && < 4.17
                , binary               >= 0.8.9  && < 0.9
@@ -52,7 +53,6 @@ library
                , directory            >= 1.3.6  && < 1.4
                , filepath             >= 1.4.2  && < 1.5
                , Glob                 >= 0.10.2 && < 0.11
-               , linear-smc           >= 1.0.1  && < 1.1
                , optparse-applicative >= 0.17.0 && < 0.18
                , process              >= 1.6.13 && < 1.7
                , text                 >= 1.2.5  && < 1.3

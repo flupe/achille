@@ -14,6 +14,7 @@ This module defines the @Recipe m@ abstraction and associated properties.
 module Achille.Recipe
   ( Context(..)
   , Recipe(..)
+
   , Task
   , task
   , Cache
@@ -25,9 +26,23 @@ module Achille.Recipe
   , vArr
   , liftD
   , pureV
+  , void
+  -- $monoidal
+  , (×)
+  , swap
+  , assoc
+  , assoc'
+  , unitor
+  , unitor'
+  -- $cartesian
+  , exl
+  , exr
+  , dup
+  , (▵)
   ) where
 
-import Control.Category.Constrained
+import Control.Category
+import Prelude hiding ((.))
 import Data.Bifunctor (first, second)
 import Data.Binary (Binary)
 import Data.ByteString.Lazy (ByteString)
@@ -102,53 +117,61 @@ instance Monad m => Category (Recipe m) where
   id :: Recipe m a a
   id = Recipe \ctx cache v -> pure (v, cache)
 
-  (∘) :: Recipe m b c -> Recipe m a b -> Recipe m a c
-  Recipe g ∘ Recipe f = Recipe \ctx cache vx -> do
+  (.) :: Recipe m b c -> Recipe m a b -> Recipe m a c
+  Recipe g . Recipe f = Recipe \ctx cache vx -> do
     let (cf, cg) = splitCache cache
     (vy, cf') <- f ctx cf vx
     (vz, cg') <- g ctx cg vy
     pure (vz, joinCache cf' cg')
 
+-- * @Recipe m@ is a monoidal category
+--
+-- $monoidal
 
-instance Monad m => Monoidal (Recipe m) where
-  (×) :: Recipe m a b -> Recipe m c d -> Recipe m (a ⊗ c) (b ⊗ d)
-  Recipe f × Recipe g = Recipe\ctx cache v -> do
-    let (cf, cg) = splitCache cache
-    let (vx, vy) = splitPair v
-    (vz, cf') <- f ctx cf vx
-    (vw, cg') <- g ctx cg vy
-    pure (joinPair vz vw, joinCache cf' cg')
+(×) :: Monad m => Recipe m a b -> Recipe m c d -> Recipe m (a, c) (b, d)
+Recipe f × Recipe g = Recipe\ctx cache v -> do
+  let (cf, cg) = splitCache cache
+  let (vx, vy) = splitPair v
+  (vz, cf') <- f ctx cf vx
+  (vw, cg') <- g ctx cg vy
+  pure (joinPair vz vw, joinCache cf' cg')
 
-  swap :: Recipe m (a ⊗ b) (b ⊗ a)
-  swap = Recipe \ctx cache v ->
-    let (vx, vy) = splitPair v in pure (joinPair vy vx, cache)
+swap :: Applicative m => Recipe m (a, b) (b, a)
+swap = Recipe \ctx cache v ->
+  let (vx, vy) = splitPair v in pure (joinPair vy vx, cache)
 
-  assoc :: Recipe m ((a ⊗ b) ⊗ c) (a ⊗ (b ⊗ c))
-  assoc = Recipe \ctx cache v ->
-    let ((vx, vy), vz) = first splitPair $ splitPair v
-    in pure (joinPair vx (joinPair vy vz), cache)
+assoc :: Applicative m => Recipe m ((a, b), c) (a, (b, c))
+assoc = Recipe \ctx cache v ->
+  let ((vx, vy), vz) = first splitPair $ splitPair v
+  in pure (joinPair vx (joinPair vy vz), cache)
 
-  assoc' :: Recipe m (a ⊗ (b ⊗ c)) ((a ⊗ b) ⊗ c)
-  assoc' = Recipe \ctx cache v ->
-    let (vx, (vy, vz)) = second splitPair $ splitPair v
-    in pure (joinPair (joinPair vx vy) vz, cache)
+assoc' :: Applicative m => Recipe m (a, (b, c)) ((a, b), c)
+assoc' = Recipe \ctx cache v ->
+  let (vx, (vy, vz)) = second splitPair $ splitPair v
+  in pure (joinPair (joinPair vx vy) vz, cache)
 
-  unitor :: Recipe m a (a ⊗ ())
-  unitor = Recipe \ctx cache v -> pure (joinPair v unitV, cache)
+unitor :: Applicative m => Recipe m a (a, ())
+unitor = Recipe \ctx cache v -> pure (joinPair v unitV, cache)
 
-  unitor' :: Recipe m (a ⊗ ()) a
-  unitor' = Recipe \ctx cache v -> pure (fst (splitPair v), cache)
+unitor' :: Applicative m => Recipe m (a, ()) a
+unitor' = Recipe \ctx cache v -> pure (fst (splitPair v), cache)
 
 
-instance Monad m => Cartesian (Recipe m) where
-  exl :: Recipe m (a ⊗ b) a
-  exl = Recipe \ctx cache v -> pure (fst (splitPair v), cache)
+-- * @Recipe m@ forms a cartesian category
+-- 
+-- $cartesian
 
-  exr :: Recipe m (a ⊗ b) b
-  exr = Recipe \ctx cache v -> pure (snd (splitPair v), cache)
+exl :: Applicative m => Recipe m (a, b) a
+exl = Recipe \ctx cache v -> pure (fst (splitPair v), cache)
 
-  dup :: Recipe m a (a ⊗ a)
-  dup = Recipe \ctx cache v -> pure (joinPair v v, cache)
+exr :: Applicative m => Recipe m (a, b) b
+exr = Recipe \ctx cache v -> pure (snd (splitPair v), cache)
+
+dup :: Applicative m => Recipe m a (a, a)
+dup = Recipe \ctx cache v -> pure (joinPair v v, cache)
+
+(▵) :: Monad m => Recipe m a b -> Recipe m a c -> Recipe m a (b, c)
+f ▵ g = (f × g) . dup
 
 -- | Lift a pure function on /values/ to recipe.
 vArr :: Applicative m => (Value a -> Value b) -> Recipe m a b
@@ -160,3 +183,6 @@ liftD c = Recipe \_ cache _ -> c <&> \x -> ((x, diff x True), cache)
 
 pureV :: Applicative m => a -> Bool -> Task m a
 pureV x b = vArr $ const (x, diff x b)
+
+void :: Applicative m => Recipe m a ()
+void = Recipe \_ cache _ -> pure (unitV, cache)
