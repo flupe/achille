@@ -16,12 +16,6 @@ module Achille.Recipe
   , Recipe(..)
   , Task
   , task
-  , Cache
-  , emptyCache
-  , splitCache
-  , joinCache
-  , fromCache
-  , toCache
   , vArr
   , liftD
   , pureV
@@ -59,6 +53,7 @@ import GHC.Generics
 import Data.Binary          qualified as Binary
 import Data.ByteString.Lazy qualified as LBS
 
+import Achille.Cache
 import Achille.Diffable
 
 
@@ -78,43 +73,6 @@ type Task m = Recipe m ()
 -- | Lift a task into a recipe accepting any input.
 task :: Task m b -> Recipe m a b
 task (Recipe r) = Recipe \cache ctx _ -> r cache ctx unitV
-
-
-
--- * Cache
---
--- $cache
--- All recipes are run with a local cache that they can use freely to remember
--- information between runs.
-
--- | The cache received by recipes. It is a list in order to make composition associative.
-newtype Cache = Cache { chunks :: [ByteString] } deriving (Generic, Binary)
-
--- | The empty cache.
-emptyCache :: Cache
-emptyCache = Cache []
-
--- | Splits the cache in two.
-splitCache :: Cache -> (Cache, Cache)
-splitCache (Cache []) = (emptyCache, emptyCache)
-splitCache (Cache (c:cs)) = (Binary.decode c, Cache cs)
-
--- | Combines two caches.
-joinCache :: Cache -> Cache -> Cache
-joinCache hd (Cache cs) = Cache (Binary.encode hd : cs)
-
--- | Retrieve a value from cache.
-fromCache :: Binary a => Cache -> Maybe a
-fromCache (Cache []) = Nothing
-fromCache (Cache (c:cs)) =
-  case Binary.decodeOrFail c of
-    Left _ -> Nothing
-    Right (_, _, x) -> Just x
-
--- | Writes a value to cache.
-toCache :: Binary a => a -> Cache
-toCache x = Cache [Binary.encode x]
-
 
 
 instance Monad m => Category (Recipe m) where

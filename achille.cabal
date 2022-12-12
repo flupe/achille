@@ -35,6 +35,7 @@ library
                     , TypeOperators
   exposed-modules: Achille
                  , Achille.CLI
+                 , Achille.Cache
                  , Achille.Config
                  , Achille.Diffable
                  , Achille.IO

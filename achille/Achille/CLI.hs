@@ -3,8 +3,9 @@ module Achille.CLI where
 
 import Data.Binary (encode)
 
-import Achille.Diffable (unitV)
+import Achille.Cache
 import Achille.Config (Config, defaultConfig, cacheFile)
+import Achille.Diffable (unitV)
 import Achille.Recipe
 import Achille.IO     (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
 

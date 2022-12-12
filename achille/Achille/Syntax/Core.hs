@@ -14,6 +14,7 @@ module Achille.Syntax.Core
   ) where
 
 
+import Achille.Cache
 import Achille.Diffable (unitV)
 import Achille.Recipe as Recipe
 

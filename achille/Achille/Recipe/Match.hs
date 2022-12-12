@@ -11,9 +11,10 @@ import System.FilePath.Glob (Pattern)
 import Data.Map             qualified as Map
 import System.FilePath.Glob qualified as Glob
 
+import Achille.Cache (Cache, emptyCache)
 import Achille.Diffable (joinList, diff)
 import Achille.IO (AchilleIO(glob))
-import Achille.Recipe (Recipe(..), Cache, emptyCache)
+import Achille.Recipe (Recipe(..))
 
 type Match b = Map FilePath (b, Cache)
 
