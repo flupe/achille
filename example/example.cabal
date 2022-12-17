@@ -9,6 +9,14 @@ executable example
                     , BlockArguments
                     , OverloadedStrings
                     , NoImplicitPrelude
+                    , DeriveGeneric
+                    , DeriveAnyClass
   build-depends: base
                , achille
+               , achille-pandoc
+               , aeson
+               , binary
+               , lucid
+               , text
+               , filepath
 

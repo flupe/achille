@@ -1,18 +1,37 @@
 module Main where
 
-import Prelude (IO)
+import Prelude (IO, undefined)
+import Data.Text   (Text)
+import Data.Aeson  (FromJSON)
+import Data.Binary (Binary)
+import GHC.Generics (Generic)
+import Lucid
+import System.FilePath
+
 import Achille as A
+import Achille.Pandoc
+
+data Meta = Meta
+  { title :: Text
+  , date  :: Text
+  } deriving (Generic, FromJSON, Binary)
 
 main :: IO ()
 main = achille rules
 
 rules :: Task IO ()
 rules = recipe \_ -> A.do
-  debug "echo 1"
+  posts <-
+    match "posts/*.md" \src -> A.do
+      copyFile src
+      (meta, txt) <- processPandocMeta src
+      writeFile (src -<.> "html") (renderPost meta txt)
+      meta
 
-  match "posts/*.md" \src -> A.do
-    debug "rendering post"
-    debug src
-    src
+  writeFile "index.html" renderIndex posts
 
-  debug "echo 2"
+renderPost :: () -> Text -> Html ()
+renderPost _ _ = undefined
+
+renderIndex :: Text -> Html ()
+renderIndex _ = undefined
