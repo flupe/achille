@@ -19,19 +19,19 @@ import Achille.Recipe
 -- Some recipes to load documents with pandoc, with or without the frontmatter header.
 
 -- | Read a pandoc document from path, using default reader options.
-readPandoc :: AchilleIO m => Recipe m FilePath Pandoc
+readPandoc :: AchilleIO m => FilePath -> Recipe m i Pandoc
 readPandoc = readPandocWith def
 
 -- | Read a pandoc document from path, using provided reader options.
-readPandocWith :: AchilleIO m => ReaderOptions -> Recipe m FilePath Pandoc
+readPandocWith :: AchilleIO m => ReaderOptions -> FilePath -> Recipe m i Pandoc
 readPandocWith ropts = undefined
 
 -- | Read a pandoc document and its frontmatter metadata from path, using default reader options.
-readPandocMeta :: (AchilleIO m, FromJSON a) => Recipe m FilePath (a, Pandoc)
+readPandocMeta :: (AchilleIO m, FromJSON a) => FilePath -> Recipe m i (a, Pandoc)
 readPandocMeta = readPandocMetaWith def
 
 -- | Read a pandoc document and its frontmatter metadata from path, using provided reader options.
-readPandocMetaWith :: (AchilleIO m, FromJSON a) => ReaderOptions -> Recipe m FilePath (a, Pandoc)
+readPandocMetaWith :: (AchilleIO m, FromJSON a) => ReaderOptions -> FilePath -> Recipe m i (a, Pandoc)
 readPandocMetaWith ropts = undefined
 
 
@@ -56,15 +56,15 @@ renderPandocWith wopts = undefined
 --
 -- Some recipes to load and render pandoc documents at once.
 
-processPandoc :: (Monad m, AchilleIO m) => Recipe m FilePath Text
+processPandoc :: (Monad m, AchilleIO m) => FilePath -> Recipe m i Text
 processPandoc = processPandocWith def def
 
-processPandocWith :: (Monad m, AchilleIO m) => ReaderOptions -> WriterOptions -> Recipe m FilePath Text
-processPandocWith ropts wopts = renderPandocWith wopts . readPandocWith ropts
+processPandocWith :: (Monad m, AchilleIO m) => ReaderOptions -> WriterOptions -> FilePath -> Recipe m a Text
+processPandocWith ropts wopts src = renderPandocWith wopts . readPandocWith ropts src
 
-processPandocMeta :: (AchilleIO m, FromJSON a) => Recipe m FilePath (a, Text)
+processPandocMeta :: (AchilleIO m, FromJSON a) => FilePath -> Recipe m i (a, Text)
 processPandocMeta = undefined
 
-processPandocMetaWith :: (AchilleIO m, FromJSON a) => ReaderOptions -> WriterOptions -> Recipe m FilePath (a, Text)
+processPandocMetaWith :: (AchilleIO m, FromJSON a) => ReaderOptions -> WriterOptions -> FilePath -> Recipe m i (a, Text)
 processPandocMetaWith ropts wopts = undefined
 

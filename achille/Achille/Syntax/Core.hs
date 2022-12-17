@@ -1,12 +1,15 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE UnicodeSyntax #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Achille.Syntax.Core
   ( Port
   , unit
   , split
   , merge
+  , pattern (:::)
   , apply
   , recipe
   , (>>=)
@@ -20,6 +23,7 @@ import Achille.Recipe as Recipe
 
 import Prelude hiding ((.),id,curry, (>>=), (>>))
 import Control.Category
+import Control.Applicative (liftA2)
 
 
 -- | A value of type @Port m r a@ represents the output of a recipe in `m`,
@@ -45,6 +49,9 @@ split (Y f) = (Y (exl . f), Y (exr . f))
 merge  :: Monad m => (Port m r a, Port m r b) -> Port m r (a, b)
 merge (Y f, Y g) = Y (f ▵ g)
 
+pattern (:::) x y <- (split -> (x, y))
+  where (:::) x y = merge (x, y)
+
 -- | Convert any *closed* function over ports into a recipe.
 recipe :: Monad m => (forall r. Port m r a -> Port m r b) -> Recipe m a b
 recipe f = fromP (f (Y id))
@@ -62,3 +69,15 @@ Y x >>= f = Y $ Recipe \ctx cache v -> do
 (>>) :: Monad m => Port m r a -> Port m r b -> Port m r b
 Y x >> Y y = Y (exr . (x ▵ y))
 -- TODO: make sequencing a primitive of Recipe m, to avoid constructing tuples for nothing
+
+
+instance Functor (Port m r) where
+  fmap :: (a -> b) -> Port m r a -> Port m r b
+  fmap = undefined
+
+instance Applicative (Port m r) where
+  pure :: a -> Port m r a
+  pure = undefined
+
+  liftA2 :: (a -> b -> c) -> Port m r a -> Port m r b -> Port m r c
+  liftA2 = undefined

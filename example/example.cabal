@@ -11,6 +11,11 @@ executable example
                     , NoImplicitPrelude
                     , DeriveGeneric
                     , DeriveAnyClass
+                    , RecordWildCards
+                    , ImportQualifiedPost
+                    , TypeSynonymInstances
+                    , FlexibleInstances
+                    , MultiParamTypeClasses
   build-depends: base
                , achille
                , achille-pandoc
