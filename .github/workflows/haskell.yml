@@ -15,6 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      - uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cabal/packages
+            ~/.cabal/store
+            dist-newstyle
+          key: ${{ runner.os }}-${{ matrix.ghc }}-${{ hashFiles('achille.cabal') }}
+          restore-keys: ${{ runner.os }}-${{ matrix.ghc }}-
       - uses: haskell/actions/setup@v2
         with:
           ghc-version: ${{ matrix.ghc }}
