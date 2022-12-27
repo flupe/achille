@@ -1,165 +1,206 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE GADTs, Rank2Types, BangPatterns, RecordWildCards #-}
 
--- | Core recipes including reading files, saving them.
 module Achille.Task
-    ( Task
-    , liftIO
-    , getCurrentDir
-    , readText
-    , readBS
-    , readLBS
-    , saveFileAs
-    , copyFile
-    , copyFileAs
-    , copy
-    , write
-    , debug
-    , callCommand
-    , readCommand
-    , callCommandWith
-    , toTimestamped
-    , toAbsolute
-    , getOutputDir
-    ) where
+  ( Task
+  , toTask
+  , -- * Running tasks
+    --
+    -- $running
+    runTask
+  ) where
 
-import Control.Monad.IO.Class  (liftIO)
-import Data.Binary             (Binary, encodeFile)
-import Data.Functor            (void)
-import Data.Text               (Text, pack)
-import Data.Text.Encoding      (decodeUtf8)
-import Data.ByteString         (ByteString)
-import System.FilePath         ((</>))
+import Control.Monad (forM)
+import Control.Applicative (Alternative, empty)
+import Data.Bifunctor (first)
+import Data.Binary (Binary)
+import Data.IntMap.Strict (IntMap, (!?))
+import Data.IntSet (IntSet)
+import Data.Map.Strict (Map)
+import Data.Maybe (fromMaybe)
+import Data.Time (UTCTime)
+import System.FilePath.Glob (Pattern)
+import Unsafe.Coerce (unsafeCoerce)
 
-import qualified Data.ByteString.Lazy as LBS
+import Data.IntMap.Strict qualified as IntMap
+import Data.IntSet        qualified as IntSet
+import Data.Map.Strict    qualified as Map
 
-import           Achille.Config
-import           Achille.Writable (Writable)
-import           Achille.Timestamped
-import qualified Achille.Writable as Writable
-import Achille.Internal    as Internal
-import Achille.Internal.IO (AchilleIO)
-import qualified Achille.Internal.IO as AchilleIO
+import Achille.Cache
+import Achille.Diffable
+import Achille.IO (AchilleIO)
+import Achille.Recipe (Context(..), Recipe(..))
+import Achille.Syntax (Program, Achille)
+import Achille.Syntax qualified as Syntax
 
 
-data Color = Red | Blue
+-- | Tasks are the atomic build operations of achille.
+data Task m a where
+  Var :: {-# UNPACK #-} !Int -- ^ de Bruijn level
+      -> Task m a
 
-color :: Color -> String -> String
-color c x = "\x1b[" <> start <> x <> "\x1b[0m"
-    where start = case c of
-                      Red  -> "31m"
-                      Blue -> "34m"
+  -- Sequencing
+  Seq  :: Task m a -> Task m b -> Task m b
+  Bind :: Task m a
+       -> Task m b -- ^ has a value of type @a@ in scope
+       -> Task m b
 
--------------------------------------
--- Recipe building blocks (uncached)
--------------------------------------
+  Pure :: Value a -> Task m a
 
--- | Recipe for retrieving the current directory
-getCurrentDir :: Applicative m
-              => Task m FilePath
-getCurrentDir = nonCached (pure . Internal.currentDir)
+  -- File matching
+  Match  :: Binary b
+         => !Pattern
+         -> Task m b -- ^ has a filepath in scope
+         -> Task m [b]
 
--- | Recipe retrieving the contents of the input file as text
-readText :: AchilleIO m
-         => FilePath -> Task m Text
-readText p = nonCached \Context{..} ->
-    decodeUtf8 <$> AchilleIO.readFile (inputDir </> currentDir </> p)
+  Match_ :: !Pattern
+         -> Task m b -- ^ has a filepath in scope
+         -> Task m ()
 
--- | Recipe retrieving the contents of the input file as a bytestring.
-readBS :: AchilleIO m => FilePath -> Task m ByteString
-readBS p = nonCached \Context{..} ->
-    AchilleIO.readFile (inputDir </> currentDir </> p)
+  -- Embedding recipes
+  Apply :: {-# UNPACK #-} !(Recipe m a b) -> Task m a -> Task m b
 
--- | Recipe retrieving the contents of the input file as a lazy bytestring.
-readLBS :: AchilleIO m => FilePath -> Task m LBS.ByteString
-readLBS p = nonCached \Context{..} ->
-    AchilleIO.readFileLazy (inputDir </> currentDir </> p)
+  -- NOTE(flupe): maybe the following could be moved out of the class?
 
--- | Recipe for saving a value to a file, using the path modifier applied to the input filepath.
---   Returns the path of the output file.
-saveFileAs :: (AchilleIO m, Writable m a)
-           => (FilePath -> FilePath)
-           -> FilePath
-           -> a
-           -> Task m FilePath
-saveFileAs mod p x = write (mod p) x
-
--- | Recipe for copying an input file to the same location in the output dir.
-copyFile :: AchilleIO m
-         => FilePath -> Task m FilePath
-copyFile p = copy p p
-
--- | Recipe for copying an input file to the output dir, using the path modifier.
-copyFileAs :: AchilleIO m
-           => (FilePath -> FilePath)
-           -> FilePath
-           -> Task m FilePath
-copyFileAs mod p = copy p (mod p)
-
--- | Recipe for copying a file to a given destination.
---   Returns the output filepath.
-copy :: AchilleIO m
-     => FilePath -> FilePath -> Task m FilePath
-copy from to = nonCached \Context{..} -> do
-    AchilleIO.copyFile (inputDir  </> currentDir </> from)
-                       (outputDir </> currentDir </> to)
-    AchilleIO.log (color Blue $ (currentDir </> from) <> " → " <> (currentDir </> to))
-    pure to
-
--- | Recipe for writing to a an output file.
---   Returns the output filepath.
-write :: (AchilleIO m, Writable m b)
-      => FilePath -> b -> Task m FilePath
-write p x = nonCached \Context{..} -> do
-    Writable.write (outputDir  </> currentDir </> p) x
-    AchilleIO.log (color Blue $ "writing " <> (currentDir </> p))
-    pure p
+  -- Product operations
+  Fst  :: Task m (a, b) -> Task m a
+  Snd  :: Task m (a, b) -> Task m b
+  Pair :: Task m a -> Task m b -> Task m (a, b)
+  Fail :: String -> Task m a
 
 
-------------------------------
--- Lifted IO
-------------------------------
+-- | Convert a user program to its internal @Task@ representation.
+toTask :: Program m a -> Task m a
+toTask p = unDB p 0
+{-# INLINE toTask #-}
 
--- | Recipe for printing a value to the console.
-debug :: AchilleIO m
-      => Show b => b -> Task m ()
-debug = nonCached . const . AchilleIO.log . show
 
--- | Recipe for running a shell command in a new process.
-callCommand :: AchilleIO m
-            => String -> Task m ()
-callCommand = nonCached . const . AchilleIO.callCommand
+newtype DB m a = DB { unDB :: Int -> Task m a }
 
--- | Recipe for running a shell command in a new process.
-readCommand :: AchilleIO m
-            => String -> [String] -> Task m String
-readCommand cmd args = nonCached $ const $ AchilleIO.readCommand cmd args
+instance Achille DB where
+  DB x >> DB y = DB \n -> Seq (x $! n) (y $! n)
+  {-# INLINE (>>) #-}
+  DB x >>= f   = DB \n -> Bind (x $! n) $ unDB (f $ DB \_ -> Var n) $! n + 1
+  {-# INLINE (>>=) #-}
+  fst (DB x) = DB \n -> Fst (x $! n)
+  {-# INLINE fst #-}
+  snd (DB x) = DB \n -> Snd (x $! n)
+  {-# INLINE snd #-}
+  pair (DB x) (DB y) = DB \n -> Pair (x $! n) (y $! n)
+  {-# INLINE pair #-}
+  void (DB x) = DB \n -> Seq (x $! n) (Pure unit)
+  {-# INLINE void #-}
+  fail s = DB \_ -> Fail s
+  {-# INLINE fail #-}
+  match  pat t = DB \n -> Match  pat $ unDB (t $ DB \_ -> Var n) $! n + 1
+  {-# INLINE match #-}
+  match_ pat t = DB \n -> Match_ pat $ unDB (t $ DB \_ -> Var n) $! n + 1
+  {-# INLINE match_ #-}
+  apply r (DB x) = DB \n -> Apply r (x n)
+  {-# INLINE apply #-}
 
--- | Recipe for running a shell command in a new process.
---   The command is defined with an helper function which depends on an input filepath
---   and the same filepath with a modifier applied.
+
+infixr 3 ?*>
+(?*>) :: Alternative f => Bool -> f a -> f a
+b ?*> x = if b then x else empty
+{-# INLINE (?*>) #-}
+
+sameOld :: a -> Value a
+sameOld x = value x False
+{-# INLINE sameOld #-}
+
+
+-- $running
 --
---   Examples:
---
---   > cp :: Recipe IO FilePath FilePath
---   > cp = runCommandWith id (\a b -> "cp " <> a <> " " <> b)
-callCommandWith :: AchilleIO m
-                => (FilePath -> FilePath -> String)
-                -> (FilePath -> FilePath)
-                -> FilePath -> Task m FilePath
-callCommandWith cmd mod p = nonCached \Context{..} ->
-    let p' = mod p
-    in AchilleIO.callCommand (cmd (inputDir </> currentDir </> p)
-                                  (outputDir </> currentDir </> p'))
-       >> pure p'
+-- Once a user program has been converted into a task (hopefully at compile-time),
+-- is is possible to execute it.
 
--- | Recipe that will retrieve the datetime contained in a filepath.
-toTimestamped :: Monad m => FilePath -> Task m (Timestamped FilePath)
-toTimestamped = pure . timestamped
+-- | Run a task given some context and incoming cache.
+runTask
+  :: (Monad m, MonadFail m, AchilleIO m)
+  => Context -> Cache -> Task m a -> m (Value a, Cache)
+runTask = runTaskIn IntMap.empty 0
+{-# INLINE runTask #-}
 
-toAbsolute :: Monad m => FilePath -> Task m FilePath
-toAbsolute p = nonCached \Context{..} ->
-    pure (inputDir </> currentDir </> p)
 
-getOutputDir :: Monad m => Task m FilePath
-getOutputDir = nonCached \Context{..} ->
-    pure outputDir
+data BoxedValue = forall a. Boxed { unBox :: {-# UNPACK #-} !(Value a) }
+
+type Env = IntMap BoxedValue
+
+runTaskIn
+  :: (Monad m, MonadFail m, AchilleIO m) 
+  => Env -> Int -> Context -> Cache -> Task m a -> m (Value a, Cache)
+runTaskIn env !depth ctx@Context{..} cache t = case t of
+  Var k -> case env !? k of
+    Just (Boxed v) -> pure (unsafeCoerce v, cache)
+    Nothing        -> fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
+
+  -- make Seqs right-nested to enforce associativity of cache
+  Seq (Seq x y) z -> runTaskIn env depth ctx cache (Seq x (Seq y z))
+  Seq x y -> do
+    let (cx, cy) = splitCache cache
+    (_ , cx) <- runTaskIn env depth ctx cx x
+    (vy, cy) <- runTaskIn env depth ctx cy y
+    pure (vy, joinCache cx cy)
+
+  Bind x f -> do
+    let (cx, cf) = splitCache cache
+    (vx , cx) <- runTaskIn env depth ctx cx x
+    (vy , cf) <- runTaskIn (IntMap.insert depth (Boxed vx) env) (depth + 1) ctx cf f
+    pure (vy, joinCache cx cf)
+
+  Pure v -> pure (v, cache)
+
+  Match pat (t :: Task m b) -> do
+    -- TODO (flupe): watch variable use in t
+    let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
+    paths <- undefined -- TODO (retrieve paths using Glob, *and* maybe sort them first)
+    res :: [(Value b, Cache)] <- forM paths \src -> do
+      mtime :: UTCTime <- undefined -- TODO (retrieve modification time)
+      case stored Map.!? src of
+        Just (x, cache') | mtime <= lastTime -> pure (sameOld x, cache')
+        mpast ->
+          let cache' = fromMaybe emptyCache $ snd <$> mpast
+              env'   = IntMap.insert depth (Boxed $ sameOld src) env
+          in runTaskIn env' (depth + 1) ctx cache' t
+    let cache' :: Map FilePath (b, Cache) =
+          Map.fromList (zip paths $ first fst <$> res)
+    pure (joinList (fst <$> res), toCache cache')
+
+  Match_ pat (t :: Task m b) -> do
+    -- TODO (flupe): watch variable use in t
+    let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
+    paths <- undefined -- TODO (retrieve paths using Glob, *and* maybe sort them first)
+    res :: [(FilePath, Cache)] <- forM paths \src -> do
+      mtime :: UTCTime <- undefined -- TODO (retrieve modification time)
+      case stored Map.!? src of
+        Just cache' | mtime <= lastTime -> pure (src, cache')
+        mpast ->
+          let cache' = fromMaybe emptyCache $ mpast
+              env'   = IntMap.insert depth (Boxed $ sameOld src) env
+          in (src,) . snd <$> runTaskIn env' (depth + 1) ctx cache' t
+    pure (unit, toCache $ Map.fromList res)
+
+  Apply r x -> do
+    let (cx, cr) = splitCache cache
+    (vx, cx) <- runTaskIn env depth ctx cx x
+    (vy, cr) <- runRecipe r ctx cr vx
+    pure (vy, joinCache cx cr)
+
+  Fst x -> do
+    (vx, cache) <- runTaskIn env depth ctx cache x
+    pure (fst $ splitPair vx, cache)
+
+  Snd x -> do
+    (vx, cache) <- runTaskIn env depth ctx cache x
+    pure (snd $ splitPair vx, cache)
+
+  Pair x y -> do
+    let (cx, cy) = splitCache cache
+    (vx , cx) <- runTaskIn env depth ctx cx x
+    (vy , cy) <- runTaskIn env depth ctx cy y
+    pure (joinPair vx vy, joinCache cx cy)
+
+  -- TODO(flupe): error-recovery and propagation
+  Fail s -> Prelude.fail s
+{-# INLINE runTaskIn #-}
+

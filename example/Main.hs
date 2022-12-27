@@ -1,15 +1,17 @@
 module Main where
 
-import Prelude (IO, undefined, (<$>), (<*>), ($))
+import Prelude
 import Control.Monad (forM_)
-import Control.Category ((.))
+import Control.Applicative
+import Data.Functor (Functor)
+import Data.Ord (Ord)
 import Data.Monoid   ((<>))
 import Data.Text     (Text, pack)
 import Data.Aeson    (FromJSON)
 import Data.Binary   (Binary)
 import GHC.Generics  (Generic)
 import Lucid
-import System.FilePath
+import System.FilePath (FilePath)
 
 import Achille as A
 import Achille.Pandoc
@@ -17,20 +19,28 @@ import Achille.Writable (Writable)
 import Achille.Writable qualified as Writable
 import qualified Prelude
 
+-- things to add to Achille.Syntax
+write :: Achille task => task m FilePath -> task m a -> task m FilePath
+write = undefined
 
+(-<.>) :: Achille task => task m FilePath -> FilePath -> task m FilePath
+(-<.>) = undefined
+
+sortOn :: (Achille task, Ord b) => (a -> b) -> task m [a] -> task m [a]
+sortOn = undefined
+
+instance (Achille task, Functor m) => Functor (task m) where
+instance (Achille task, Applicative m) => Applicative (task m) where
+
+-- main example
 main :: IO ()
-main = achille rules
-
-rules :: Task IO ()
-rules = recipe \_ -> A.do
+main = achille A.do
   posts <-
     match "posts/*.md" \src -> A.do
-      meta ::: txt <- processPandocMeta src
-      meta ::: write (src -<.> "html") (renderPost <$> meta <*> txt)
+      meta :*: txt <- processPandocMeta src
+      meta :*: write (src -<.> "html") (renderPost <$> meta <*> txt)
 
-  write "index.html" (renderIndex <$> sortOn (date . Prelude.fst) posts)
-
-  unit
+  write undefined (renderIndex <$> sortOn (date . Prelude.fst) posts)
 
 
 instance Writable IO (Html ()) where

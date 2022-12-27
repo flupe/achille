@@ -1,89 +1,86 @@
-{-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE FlexibleInstances #-}
-{- |
-Module      : Achille.Syntax
-Description : The EDSL syntax exposed to the user
-Copyright   : (c) flupe, 2022
-License     : MIT
-Maintainer  : lucas@escot.me
+{-# LANGUAGE Rank2Types, PatternSynonyms, ViewPatterns #-}
+{- | Module      : Achille.Syntax
+     Description : The EDSL syntax exposed to the user
+     Copyright   : (c) flupe, 2022
+     License     : MIT
+     Maintainer  : lucas@escot.me
 
-This module exports the syntax available to the user to build recipes.
+     This module exports the syntax available to the user when writing achille programs.
 -}
 module Achille.Syntax
-  ( module Achille.Syntax.Core
-  -- * Basic operations
-  , void
-  , debug
-  -- * List operations
-  , sort
-  , sortOn
-  , take
-  , drop
-  , write
-  , fail
-  --, chunks
-  -- * Match operations
-  , match
-  , matchFile
+  ( Program
+  , Achille(..)
+  , pattern (:*:)
   ) where
 
-import Prelude hiding ((>>), take, drop, sort, (.), id, fail)
-import Control.Category ((.), id)
-import Data.Binary          (Binary)
-import Data.String          (IsString(fromString))
-import System.FilePath      (FilePath)
+import Data.Binary (Binary)
+import Prelude hiding (fst, snd)
 import System.FilePath.Glob (Pattern)
 
-import Achille.Writable (Writable)
-import Achille.Diffable (unitV, diff)
-import Achille.IO       (AchilleIO)
-import Achille.Recipe   (Recipe, Task, pureV, (▵))
-
-import Achille.Syntax.Core
-import Achille.Recipe       qualified as Recipe (task)
-import Achille.Recipe.Base  qualified as Recipe
-import Achille.Recipe.List  qualified as Recipe
-import Achille.Recipe.Match qualified as Recipe
+import Achille.Recipe (Recipe)
 
 
-instance (Monad m, IsString a) => IsString (Port m r a) where
-  fromString s = apply (pureV (fromString s) False) unit
+-- | A program is a task definition, polymorphic over the kind of underlying task family.
+type Program m a = forall task. Achille task => task m a
 
--- | Discard an output value.
-void :: Monad m => Port m r a -> Port m r ()
-void x = x >> unit
 
-debug :: (Monad m, AchilleIO m) => Port m r String -> Port m r ()
-debug = apply Recipe.debug
+-- | Interface for all the operations supported by achille programs.
+class Achille (task :: (* -> *) -> * -> *) where
+  -- | Sequence two tasks, ignoring the result of the first.
+  (>>)   :: task m a -> task m b -> task m b
 
-sort :: (Monad m, Ord a) => Port m r [a] -> Port m r [a]
-sort = apply Recipe.sort
+  -- | Sequence two tasks, making the result of the first available to the second.
+  --   This enables binding variables using @QualifiedDo@, while preventing duplication.
+  (>>=)  :: task m a -> (task m a -> task m b) -> task m b
 
-sortOn :: (Monad m, Ord b) => (a -> b) -> Port m r [a] -> Port m r [a]
-sortOn = apply . Recipe.sortOn
+  -- | Project out the first component of a task.
+  fst    :: task m (a, b) -> task m a
 
-take :: Monad m => Int -> Port m r [a] -> Port m r [a]
-take = apply . Recipe.take
+  -- | Project out the second component of a task.
+  snd    :: task m (a, b) -> task m b
 
-drop :: Monad m => Int -> Port m r [a] -> Port m r [a]
-drop = apply . Recipe.drop
+  -- | Make a task out of a pair of tasks.
+  pair   :: task m a -> task m b -> task m (a, b)
 
--- TODO: take care of path change
-write :: (Monad m, Writable m a) => FilePath -> Port m r a -> Port m r FilePath
-write src = apply (Recipe.write . (Recipe.task (pureV src False) ▵ id))
+  -- | Discard the result of a task.
+  void   :: task m a -> task m ()
 
-fail :: (MonadFail m) => String -> Port m r a
-fail = undefined
+  -- | Fail with an error message.
+  fail   :: String -> task m a
 
--- chunks :: Monad m => Int -> Port m r [a] %1 -> Port m r [[a]]
--- chunks = encode . Recipe.chunks
+  -- | For every path matching the Glob pattern, run the given task and
+  --   collect all results in a list.
+  --   @match@ caches the list, and only triggers the task on a given path if
+  --   the underlying file is new or has changed since the last run.
+  match  :: Binary b => Pattern -> (task m FilePath -> task m b) -> task m [b]
 
--- NOTE: this @forall r.@ quantification inside the function means we cannot use variables bound outside of it.
---       but that is precisely what I want to allow.
---       should think carefully about that tomorrow
--- match :: (Monad m, AchilleIO m, Diffable b) => Pattern -> (FilePath -> forall r. Port m r b) %1 -> Port m r [b]
-match :: (Monad m, AchilleIO m, Binary b) => Pattern -> (FilePath -> Port m r b) -> Port m r [b]
-match pat f = undefined -- apply (Recipe.match pat (recipe f)) unit
+  -- | For every path matching the Glob pattern, run the given task.
+  --   @match_@ only triggers the task on a given path if the underlying file is
+  --   new or has changed since the last run.
+  match_ :: Pattern -> (task m FilePath -> task m b) -> task m ()
 
-matchFile :: (Monad m, AchilleIO m, Binary b) => FilePath -> Port m r b -> Port m r b
-matchFile = undefined
+  -- | Make a task out of a recipe applied to a task.
+  apply  :: Recipe m a b -> task m a -> task m b
+
+
+-- | Pattern for destructuring and constructing /tuples/ of tasks.
+--   It is intended to be used with @QualifiedDo@, as such:
+--
+-- > {-# LANGUAGE QualifiedDo #-}
+-- > import Achille as A
+-- >
+-- > doStuff     :: Program IO (Text, Bool)
+-- > doMoreStuff :: Program IO (Bool, Text) -> Program IO String
+-- >
+-- > rules :: Program IO String
+-- > rules = A.do
+-- >   x :*: y <- doStuff
+-- >   doMoreStuff (y :*: x)
+
+pattern (:*:) :: Achille task => task m a -> task m b -> task m (a, b)
+pattern (:*:) x y <- (split -> (x, y))
+  where (:*:) = pair
+
+split :: Achille task => task m (a, b) -> (task m a, task m b)
+split p = (fst p, snd p)
+
