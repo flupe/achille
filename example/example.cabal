@@ -4,6 +4,7 @@ version:            0.0.0
 build-type:         Simple
 tested-with:        GHC == 9.2.4
 executable example
+  ghc-options: -O2
   main-is:       Main.hs
   default-extensions: QualifiedDo
                     , BlockArguments
@@ -16,6 +17,7 @@ executable example
                     , TypeSynonymInstances
                     , FlexibleInstances
                     , MultiParamTypeClasses
+                    , IncoherentInstances
   build-depends: base
                , achille
                , achille-pandoc

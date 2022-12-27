@@ -1,4 +1,4 @@
-{-# LANGUAGE Rank2Types, ViewPatterns, RecordWildCards #-}
+{-# LANGUAGE Rank2Types, ViewPatterns, RecordWildCards, NamedFieldPuns #-}
 
 -- | CLI for achille recipes.
 module Achille.CLI 
@@ -9,15 +9,20 @@ module Achille.CLI
 
 import Data.Binary (encode)
 import Data.Functor (void)
+import Data.Time (UTCTime(..))
 import Options.Applicative
 
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
 import Achille.Diffable (unit)
-import Achille.Task (Task, toTask)
+import Achille.Task (Task, toTask, runTask)
 import Achille.Recipe
 import Achille.Syntax (Program)
 import Achille.IO (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
+
+import Data.Binary          qualified as Binary
+import Achille.IO           qualified as AIO
+import Data.ByteString.Lazy qualified as LBS
 
 
 -- TODO(flupe): make the CLI interace extensible
@@ -36,24 +41,36 @@ data AchilleCommand
 -- | CLI parser.
 achilleCLI :: Parser AchilleCommand
 achilleCLI = subparser $
-     command "build" (info (pure Build) (progDesc "Build the site once"))
+     command "build" (info (pure Build) (progDesc "Build the site"))
   <> command "deploy" (info (pure Deploy) (progDesc "Deploy site"))
   <> command "clean" (info (pure Clean) (progDesc "Delete all artefacts"))
-  <> command "graph" (info (pure Clean) (progDesc "Output graph of generator"))
+  <> command "graph" (info (pure Graph) (progDesc "Output graph of generator"))
 
 
 -- | Run a task in some context given a configuration.
-runAchille :: (Monad m, AchilleIO m) => Config -> Task m a -> m a
-runAchille cfg t = undefined --do
---  cache <- do
---    hasCache <- doesFileExist $ cacheFile cfg
---    if hasCache then toCache <$> readFileLazy (cacheFile cfg) 
---                else pure emptyCache
---  ((v, _), cache') <- runRecipe t ctx cache unitV
---  cache' `seq` writeFileLazy (cacheFile cfg) $ encode cache'
---  -- TODO: ^ this doesn't look like a very nice way to do file I/O
---  --         investigate whether we should stop using lazy bytestrings or smthg
---  pure v
+runAchille :: (Monad m, MonadFail m, AchilleIO m) => Config -> Task m a -> m ()
+runAchille cfg@Config{cacheFile} t = do
+  -- 1. try to retrieve cache
+  (cache, lastTime) <- do
+    hasCache <- doesFileExist cacheFile
+    if hasCache then
+      (,) <$> (Binary.decode . LBS.fromStrict <$> AIO.readFile cacheFile)
+          <*> AIO.getModificationTime cacheFile
+    else pure (emptyCache, defaultTime)
+
+  -- 2. create initial context
+  let ctx :: Context = Context
+        { lastTime = lastTime
+        }
+
+  -- 3. run task in context using cache
+  (_, cache') <- runTask ctx cache t
+
+  -- 4. write new cache to file
+  AIO.writeFileLazy cacheFile $ Binary.encode cache'
+
+  where defaultTime :: UTCTime
+        defaultTime = UTCTime (toEnum 0) 0
 
 
 -- | Top-level runner for achille tasks. Provides a CLI with several commands.
@@ -64,10 +81,11 @@ achille = achilleWith defaultConfig
 
 -- | Top-level runner and CLI for achille programs, using a custom config.
 achilleWith :: Config -> Program IO a -> IO ()
-achilleWith cfg@Config{..} (toTask -> t) = customExecParser p opts >>= \case
+achilleWith cfg@Config{description} (toTask -> t) = customExecParser p opts >>= \case
   Deploy -> putStrLn "Deploying website..."
   Clean  -> putStrLn "Deleting all artefacts"
   Build  -> void $ runAchille cfg t
+  Graph  -> putStrLn "Rendering graph..."
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
     p    = prefs showHelpOnEmpty

@@ -15,28 +15,28 @@ import System.Process       qualified as Process
 -- | Interface for IO operations used by core recipes.
 class AchilleIO m where
     -- | Retrieve a file as a bytestring.
-    readFile            :: FilePath -> m BS.ByteString
+    readFile :: FilePath -> m BS.ByteString
     -- | Retrieve a file as a /lazy/ bytestring.
-    readFileLazy        :: FilePath -> m LBS.ByteString
+    readFileLazy :: FilePath -> m LBS.ByteString
     -- | Copy a file from one location to another.
-    copyFile            :: FilePath -> FilePath       -> m ()
+    copyFile :: FilePath -> FilePath       -> m ()
     -- | Write a bytestring to a file.
-    writeFile           :: FilePath -> BS.ByteString  -> m ()
+    writeFile :: FilePath -> BS.ByteString  -> m ()
     -- | Write a /lazy/ bytestring to a file.
-    writeFileLazy       :: FilePath -> LBS.ByteString -> m ()
+    writeFileLazy :: FilePath -> LBS.ByteString -> m ()
     -- | Check whether a file exists.
-    doesFileExist       :: FilePath -> m Bool
+    doesFileExist :: FilePath -> m Bool
     -- | Check whether a directory exists.
-    doesDirExist        :: FilePath -> m Bool
+    doesDirExist :: FilePath -> m Bool
     -- | Run a shell command in a new process.
-    callCommand         :: String -> m ()
+    callCommand :: String -> m ()
     -- | Run a shell command in a new process.
-    readCommand         :: String -> [String] -> m String
+    readCommand :: String -> [String] -> m String
     -- | Log a string to stdout.
-    log                 :: String -> m ()
+    log :: String -> m ()
     -- | Find all paths matching a given globpattern, relative to a given directory.
-    glob                :: FilePath -- ^ Path of the root directory.
-                        -> Glob.Pattern   -> m [FilePath]
+    glob :: FilePath -- ^ Path of the root directory.
+         -> Glob.Pattern -> m [FilePath]
     -- | Get modification time of a file.
     getModificationTime :: FilePath -> m UTCTime
 

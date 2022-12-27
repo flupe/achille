@@ -15,9 +15,9 @@ import Data.Bifunctor (first)
 import Data.Binary (Binary)
 import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
+import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
-import Data.Time (UTCTime)
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -27,7 +27,7 @@ import Data.Map.Strict    qualified as Map
 
 import Achille.Cache
 import Achille.Diffable
-import Achille.IO (AchilleIO)
+import Achille.IO
 import Achille.Recipe (Context(..), Recipe(..))
 import Achille.Syntax (Program, Achille)
 import Achille.Syntax qualified as Syntax
@@ -153,9 +153,9 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
   Match pat (t :: Task m b) -> do
     -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
-    paths <- undefined -- TODO (retrieve paths using Glob, *and* maybe sort them first)
+    paths <- sort <$> glob "." pat -- TODO handle root directory
     res :: [(Value b, Cache)] <- forM paths \src -> do
-      mtime :: UTCTime <- undefined -- TODO (retrieve modification time)
+      mtime <- getModificationTime src
       case stored Map.!? src of
         Just (x, cache') | mtime <= lastTime -> pure (sameOld x, cache')
         mpast ->
@@ -169,9 +169,9 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
   Match_ pat (t :: Task m b) -> do
     -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
-    paths <- undefined -- TODO (retrieve paths using Glob, *and* maybe sort them first)
+    paths <- sort <$> glob "." pat -- TODO handle root directory
     res :: [(FilePath, Cache)] <- forM paths \src -> do
-      mtime :: UTCTime <- undefined -- TODO (retrieve modification time)
+      mtime <- getModificationTime src
       case stored Map.!? src of
         Just cache' | mtime <= lastTime -> pure (src, cache')
         mpast ->

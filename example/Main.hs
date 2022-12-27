@@ -32,15 +32,16 @@ sortOn = undefined
 instance (Achille task, Functor m) => Functor (task m) where
 instance (Achille task, Applicative m) => Applicative (task m) where
 
+
 -- main example
 main :: IO ()
 main = achille A.do
-  posts <-
-    match "posts/*.md" \src -> A.do
-      meta :*: txt <- processPandocMeta src
-      meta :*: write (src -<.> "html") (renderPost <$> meta <*> txt)
+  -- posts <-
+    match_ "posts/*.md" \src -> A.do
+      txt <- processPandoc src
+      write (src -<.> "html") (renderPost <$> txt)
 
-  write undefined (renderIndex <$> sortOn (date . Prelude.fst) posts)
+  -- write undefined (renderIndex <$> sortOn (date . Prelude.fst) posts)
 
 
 instance Writable IO (Html ()) where
@@ -59,11 +60,11 @@ outer body = doctypehtml_ do
   footer_ $ p_ "2022 All rights reserved"
 
 
-renderPost :: Meta -> Text -> Html ()
-renderPost Meta{..} content = outer $ do
+renderPost :: Text -> Html ()
+renderPost content = outer $ do
   article_ do
-    h1_      $ toHtml title
-    p_       $ "Published on " <> toHtml date
+    -- h1_      $ toHtml title
+    -- p_       $ "Published on " <> toHtml date
     section_ $ toHtmlRaw content
 
 

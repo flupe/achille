@@ -9,9 +9,11 @@ module Achille.Cache
 
 import GHC.Generics
 import Data.Binary (Binary)
-import Data.ByteString.Lazy (ByteString)
+import Data.ByteString (ByteString)
+import Data.Maybe (fromMaybe)
 
 import Data.Binary          qualified as Binary
+import Data.ByteString      qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 
 -- * Cache
@@ -20,32 +22,34 @@ import Data.ByteString.Lazy qualified as LBS
 -- All recipes are run with a local cache that they can use freely to remember
 -- information between runs.
 
--- | The cache received by recipes. It is a list in order to make composition associative.
-newtype Cache = Cache { chunks :: [ByteString] } deriving (Generic, Binary)
+-- | The cache received by recipes.
+newtype Cache = Cache ByteString deriving (Generic, Binary)
 
 -- | The empty cache.
 emptyCache :: Cache
-emptyCache = Cache []
+emptyCache = Cache mempty
 
 -- | Splits the cache in two.
 splitCache :: Cache -> (Cache, Cache)
-splitCache (Cache []) = (emptyCache, emptyCache)
-splitCache (Cache (c:cs)) = (Binary.decode c, Cache cs)
+splitCache = fromMaybe (emptyCache, emptyCache) . fromCache
 
--- | Combines two caches.
+-- | Combines two caches into one.
 joinCache :: Cache -> Cache -> Cache
-joinCache hd (Cache cs) = Cache (Binary.encode hd : cs)
+joinCache a b = toCache (a, b)
+
+-- NOTE:
+--  @joinCache@ is /not/ associative
+--  so we force @Seq@s to be right-nested when evaluating in Achille.Task
+--  so that user-added parenthesis do not mess with the cache.
 
 -- | Retrieve a value from cache.
 fromCache :: Binary a => Cache -> Maybe a
-fromCache (Cache []) = Nothing
-fromCache (Cache (c:cs)) =
-  case Binary.decodeOrFail c of
-    Left _ -> Nothing
+fromCache (Cache c) =
+  case Binary.decodeOrFail (LBS.fromStrict c) of
+    Left _          -> Nothing
     Right (_, _, x) -> Just x
 
 -- | Writes a value to cache.
 toCache :: Binary a => a -> Cache
-toCache x = Cache [Binary.encode x]
-
+toCache = Cache . BS.toStrict . Binary.encode
 
