@@ -9,10 +9,8 @@
 > **Note**
 >
 > The only version available on Hackage is largely outdated and *shouldn't be used*.
-> This repository contains a WIP rewrite, based on [linear-smc][smc]. By
-> defining `Recipe m` as a cartesian category, it *should* become possible to
-> provide a very user-friendly EDSL syntax, that will under the hood be translated
-> into the operations of the internal abstraction.
+> This repository contains a WIP rewrite, that should make achille *way* easier to use
+> and even more powerful.
 
 [smc]: https://hackage.haskell.org/package/linear-smc-1.0.1
 
