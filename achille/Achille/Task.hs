@@ -9,6 +9,8 @@ module Achille.Task
     runTask
   ) where
 
+import Prelude hiding ((.))
+import Control.Category
 import Control.Monad (forM)
 import Control.Applicative (Alternative, empty)
 import Data.Bifunctor (first)
@@ -28,7 +30,7 @@ import Data.Map.Strict    qualified as Map
 import Achille.Cache
 import Achille.Diffable
 import Achille.IO
-import Achille.Recipe (Context(..), Recipe(..))
+import Achille.Recipe (Context(..), Recipe(Id), runRecipe)
 import Achille.Syntax (Program, Achille)
 import Achille.Syntax qualified as Syntax
 
@@ -44,8 +46,6 @@ data Task m a where
        -> Task m b -- ^ has a value of type @a@ in scope
        -> Task m b
 
-  Pure :: Value a -> Task m a
-
   -- File matching
   Match  :: Binary b
          => !Pattern
@@ -57,16 +57,24 @@ data Task m a where
          -> Task m ()
 
   -- Embedding recipes
-  Apply :: {-# UNPACK #-} !(Recipe m a b) -> Task m a -> Task m b
+  Apply :: !(Recipe m a b) -> Task m a -> Task m b
 
   -- NOTE(flupe): maybe the following could be moved out of the class?
 
-  -- Product operations
-  Fst  :: Task m (a, b) -> Task m a
-  Snd  :: Task m (a, b) -> Task m b
+  Val  :: !(Value a) -> Task m a
   Pair :: Task m a -> Task m b -> Task m (a, b)
-  Fail :: String -> Task m a
+  Fail :: !String -> Task m a
 
+instance Show (Task m a) where
+  show (Var k) = "Var " <> show k
+  show (Seq x y) = "Seq (" <> show x <> ") (" <> show y <> ")"
+  show (Bind x f) = "Bind (" <> show x <> ") (" <> show f <> ")"
+  show (Match p t) = "Match " <> show p <> " (" <> show t <> ")"
+  show (Match_ p t) = "Match_ " <> show p <> " (" <> show t <> ")"
+  show (Apply r x) = "Apply (" <> show r <> ") (" <> show x <> ")"
+  show (Pair x y) = "Pair (" <> show x <> ") (" <> show y <> ")"
+  show (Fail s) = "Fail " <> show s
+  show (Val x) = "Val"
 
 -- | Convert a user program to its internal @Task@ representation.
 toTask :: Program m a -> Task m a
@@ -78,25 +86,29 @@ newtype DB m a = DB { unDB :: Int -> Task m a }
 
 instance Achille DB where
   DB x >> DB y = DB \n -> Seq (x $! n) (y $! n)
+    where seq :: Task m a -> Task m b -> Task m b
+          seq (Seq x y) z = seq x (seq y z)
+          {-# INLINE seq #-}
   {-# INLINE (>>) #-}
-  DB x >>= f   = DB \n -> Bind (x $! n) $ unDB (f $ DB \_ -> Var n) $! n + 1
+  DB x >>= f = DB \n -> Bind (x $! n) $ unDB (f $ DB \_ -> Var n) $! n + 1
   {-# INLINE (>>=) #-}
-  fst (DB x) = DB \n -> Fst (x $! n)
-  {-# INLINE fst #-}
-  snd (DB x) = DB \n -> Snd (x $! n)
-  {-# INLINE snd #-}
   pair (DB x) (DB y) = DB \n -> Pair (x $! n) (y $! n)
   {-# INLINE pair #-}
-  void (DB x) = DB \n -> Seq (x $! n) (Pure unit)
-  {-# INLINE void #-}
   fail s = DB \_ -> Fail s
   {-# INLINE fail #-}
-  match  pat t = DB \n -> Match  pat $ unDB (t $ DB \_ -> Var n) $! n + 1
+  match pat t = DB \n -> Match pat $ unDB (t $ DB \_ -> Var n) $! n + 1
   {-# INLINE match #-}
   match_ pat t = DB \n -> Match_ pat $ unDB (t $ DB \_ -> Var n) $! n + 1
   {-# INLINE match_ #-}
-  apply r (DB x) = DB \n -> Apply r (x n)
+  apply !r (DB x) = DB \n -> app r (x n)
+    where app :: Recipe m a b -> Task m a -> Task m b
+          app r (Apply s x) = app (r . s) x
+          app Id x = x
+          app r x = Apply r x
+          {-# INLINE app #-}
   {-# INLINE apply #-}
+  val !x = DB \_ -> Val x
+  {-# INLINE val #-}
 
 
 infixr 3 ?*>
@@ -148,8 +160,6 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
     (vy , cf) <- runTaskIn (IntMap.insert depth (Boxed vx) env) (depth + 1) ctx cf f
     pure (vy, joinCache cx cf)
 
-  Pure v -> pure (v, cache)
-
   Match pat (t :: Task m b) -> do
     -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
@@ -183,16 +193,8 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
   Apply r x -> do
     let (cx, cr) = splitCache cache
     (vx, cx) <- runTaskIn env depth ctx cx x
-    (vy, cr) <- runRecipe r ctx cr vx
+    (vy, cr) <- runRecipe ctx cr vx r
     pure (vy, joinCache cx cr)
-
-  Fst x -> do
-    (vx, cache) <- runTaskIn env depth ctx cache x
-    pure (fst $ splitPair vx, cache)
-
-  Snd x -> do
-    (vx, cache) <- runTaskIn env depth ctx cache x
-    pure (snd $ splitPair vx, cache)
 
   Pair x y -> do
     let (cx, cy) = splitCache cache
@@ -202,5 +204,7 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
 
   -- TODO(flupe): error-recovery and propagation
   Fail s -> Prelude.fail s
+
+  Val v -> pure (v, cache)
 {-# INLINE runTaskIn #-}
 

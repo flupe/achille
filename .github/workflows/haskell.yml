@@ -10,7 +10,7 @@ jobs:
   runhaskell:
     strategy:
       matrix:
-        ghc: ['9.2.4', '9.4.2']
+        ghc: ['9.4.2']
     name: Build (cabal + GHC ${{ matrix.ghc }}) Ubuntu
     runs-on: ubuntu-latest
     steps:
@@ -27,4 +27,4 @@ jobs:
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: 'latest'
-      - run: cabal build achille
+      - run: cabal build all

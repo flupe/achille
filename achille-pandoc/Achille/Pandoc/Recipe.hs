@@ -48,9 +48,9 @@ readPandoc = readPandocWith def
 readPandocWith
   :: (MonadFail m, Applicative m, AchilleIO m)
   => ReaderOptions -> Recipe m FilePath Pandoc
-readPandocWith ropts = (id &&& readText) >>> Recipe
-  { recipeName = "readPandoc"
-  , runRecipe = \ctx cache v ->
+readPandocWith ropts = (id &&& readText) >>> embed Embedded
+  { rName = "readPandoc"
+  , runEmbed = \ctx cache v ->
       let ((src, _), vt@(txt, _)) = splitPair v
           ext = takeExtension src
       in case getReader ext of
@@ -66,9 +66,9 @@ readPandocMeta = readPandocMetaWith def
 
 -- | Read a pandoc document and its frontmatter metadata from path, using provided reader options.
 readPandocMetaWith :: (Monad m, AchilleIO m, FromJSON a) => ReaderOptions -> Recipe m FilePath (a, Pandoc)
-readPandocMetaWith ropts = (id &&& readText) >>> Recipe
-  { recipeName = "readPandocMeta"
-  , runRecipe  = \ctx cache (txt, _) -> undefined
+readPandocMetaWith ropts = (id &&& readText) >>> embed Embedded
+  { rName = "readPandocMeta"
+  , runEmbed = \ctx cache (txt, _) -> undefined
   }
 
 
@@ -84,9 +84,9 @@ renderPandoc = renderPandocWith def
 
 -- | Convert pandoc document to text, using provided writer options.
 renderPandocWith :: MonadFail m => WriterOptions -> Recipe m Pandoc Text
-renderPandocWith wopts = Recipe
-  { recipeName = "renderPandoc"
-  , runRecipe = \ctx cache v@(doc, _) -> do
+renderPandocWith wopts = embed Embedded
+  { rName = "renderPandoc"
+  , runEmbed = \ctx cache v@(doc, _) -> do
       case runPure (writeHtml5String wopts doc) of
         Left err -> fail $ unpack $ renderError $ err
         Right html -> pure (value html (hasChanged v), cache)

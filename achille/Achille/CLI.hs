@@ -16,7 +16,7 @@ import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
 import Achille.Diffable (unit)
 import Achille.Task (Task, toTask, runTask)
-import Achille.Recipe
+import Achille.Recipe hiding (void)
 import Achille.Syntax (Program)
 import Achille.IO (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
 
@@ -85,9 +85,8 @@ achilleWith cfg@Config{description} (toTask -> t) = customExecParser p opts >>= 
   Deploy -> putStrLn "Deploying website..."
   Clean  -> putStrLn "Deleting all artefacts"
   Build  -> void $ runAchille cfg t
-  Graph  -> putStrLn "Rendering graph..."
+  Graph  -> print t
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
     p    = prefs showHelpOnEmpty
 {-# INLINE achilleWith #-}
-

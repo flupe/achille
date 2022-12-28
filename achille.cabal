@@ -14,9 +14,7 @@ maintainer:         Lucas Escot <lucas@escot.me>
 license:            MIT
 license-file:       LICENSE
 build-type:         Simple
-tested-with:
-  , GHC == 9.2.4
-  , GHC == 9.4.2
+tested-with: GHC == 9.4.2
 
 source-repository head
   type:             git
