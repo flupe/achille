@@ -1,15 +1,13 @@
 module Main where
 
 import Prelude
-import Control.Monad (forM_)
-import Data.Text     (Text, pack)
-import Data.Aeson    (FromJSON, ToJSON)
-import GHC.Generics  (Generic)
+import Data.Text (Text)
+import Data.Aeson (FromJSON, ToJSON)
+import GHC.Generics (Generic)
 
 import Achille as A
 import Achille.Pandoc
 import Achille.Stache
-import Achille.Writable qualified as Writable
 
 -- things to add to Achille.Syntax
 

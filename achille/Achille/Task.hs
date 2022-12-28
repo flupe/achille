@@ -51,10 +51,12 @@ data Task m a where
   Match  :: Binary b
          => !Pattern
          -> Task m b -- ^ has a filepath in scope
+         -> IntSet
          -> Task m [b]
 
   Match_ :: !Pattern
          -> Task m b -- ^ has a filepath in scope
+         -> IntSet
          -> Task m ()
 
   -- Embedding recipes
@@ -70,8 +72,8 @@ instance Show (Task m a) where
   show (Var k) = "Var " <> show k
   show (Seq x y) = "Seq (" <> show x <> ") (" <> show y <> ")"
   show (Bind x f) = "Bind (" <> show x <> ") (" <> show f <> ")"
-  show (Match p t) = "Match " <> show p <> " (" <> show t <> ")"
-  show (Match_ p t) = "Match_ " <> show p <> " (" <> show t <> ")"
+  show (Match p v t) = "Match " <> show p <> " (" <> show v <> ") (" <> show t <> ")"
+  show (Match_ p v t) = "Match_ " <> show p <> " (" <> show v <> ") (" <> show t <> ")"
   show (Apply r x) = "Apply (" <> show r <> ") (" <> show x <> ")"
   show (Pair x y) = "Pair (" <> show x <> ") (" <> show y <> ")"
   show (Fail s) = "Fail " <> show s
@@ -79,36 +81,50 @@ instance Show (Task m a) where
 
 -- | Convert a user program to its internal @Task@ representation.
 toTask :: Program m a -> Task m a
-toTask p = unDB p 0
+toTask p = fst $! unDB p 0
 {-# INLINE toTask #-}
 
 
-newtype DB m a = DB { unDB :: Int -> Task m a }
+newtype DB m a = DB { unDB :: Int -> (Task m a, IntSet) }
 
 instance Achille DB where
-  DB x >> DB y = DB \n -> Seq (x $! n) (y $! n)
+  DB x >> DB y = DB \n ->
+    let (x', vsx) = x $! n
+        (y', vsy) = y $! n
+    in (seq x' y', vsx <> vsy)
     where seq :: Task m a -> Task m b -> Task m b
           seq (Seq x y) z = seq x (seq y z)
           {-# INLINE seq #-}
   {-# INLINE (>>) #-}
-  DB x >>= f = DB \n -> Bind (x $! n) $ unDB (f $ DB \_ -> Var n) $! n + 1
+  DB x >>= f = DB \n -> 
+    let (x', vsx) = x $! n
+        (f', vsf) = unDB (f $ DB \_ -> (Var n, IntSet.singleton n)) $! n + 1
+    in (Bind x' f', vsx <> vsf)
   {-# INLINE (>>=) #-}
-  pair (DB x) (DB y) = DB \n -> Pair (x $! n) (y $! n)
+  pair (DB x) (DB y) = DB \n -> 
+    let (x', vsx) = x $! n
+        (y', vsy) = y $! n
+    in (Pair x' y', vsx <> vsy)
   {-# INLINE pair #-}
-  fail s = DB \_ -> Fail s
+  fail s = DB \_ -> (Fail s, IntSet.empty)
   {-# INLINE fail #-}
-  match pat t = DB \n -> Match pat $ unDB (t $ DB \_ -> Var n) $! n + 1
+  match pat t = DB \n ->
+    let (t', vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
+    in (Match pat t' vst, vst)
   {-# INLINE match #-}
-  match_ pat t = DB \n -> Match_ pat $ unDB (t $ DB \_ -> Var n) $! n + 1
+  match_ pat t = DB \n -> 
+    let (t', vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
+    in (Match_ pat t' vst, vst)
   {-# INLINE match_ #-}
-  apply !r (DB x) = DB \n -> app r (x n)
+  apply !r (DB x) = DB \n -> 
+    let (x', vsx) = x $! n in (app r x', vsx)
     where app :: Recipe m a b -> Task m a -> Task m b
           app r (Apply s x) = app (r . s) x
           app Id x = x
           app r x = Apply r x
           {-# INLINE app #-}
   {-# INLINE apply #-}
-  val !x = DB \_ -> Val x
+  val !x = DB \_ -> (Val x, IntSet.empty)
   {-# INLINE val #-}
 
 
@@ -161,10 +177,10 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
     (vy , cf) <- runTaskIn (IntMap.insert depth (Boxed vx) env) (depth + 1) ctx cf f
     pure (vy, joinCache cx cf)
 
-  Match pat (t :: Task m b) -> do
+  Match pat (t :: Task m b) vars -> do
     -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
-    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat -- TODO handle root directory
+    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat
     res :: [(Value b, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
@@ -177,10 +193,10 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
           Map.fromList (zip paths $ first fst <$> res)
     pure (joinList (fst <$> res), toCache cache')
 
-  Match_ pat (t :: Task m b) -> do
+  Match_ pat (t :: Task m b) vars -> do
     -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
-    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat -- TODO handle root directory
+    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat
     res :: [(FilePath, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
