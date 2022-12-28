@@ -9,7 +9,6 @@ executable example
   default-extensions: QualifiedDo
                     , BlockArguments
                     , OverloadedStrings
-                    , NoImplicitPrelude
                     , DeriveGeneric
                     , DeriveAnyClass
                     , RecordWildCards

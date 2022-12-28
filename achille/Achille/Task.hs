@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, Rank2Types, BangPatterns, RecordWildCards #-}
+{-# LANGUAGE GADTs, Rank2Types, BangPatterns, RecordWildCards, ViewPatterns #-}
 
 module Achille.Task
   ( Task
@@ -91,10 +91,10 @@ instance Achille DB where
   DB x >> DB y = DB \n ->
     let (x', vsx) = x $! n
         (y', vsy) = y $! n
-    in (seq x' y', vsx <> vsy)
-    where seq :: Task m a -> Task m b -> Task m b
-          seq (Seq x y) z = seq x (seq y z)
-          {-# INLINE seq #-}
+    in (x' *> y', vsx <> vsy)
+    where (*>) :: Task m a -> Task m b -> Task m b
+          (*>) (Seq x y) z = x *> (y *> z)
+          {-# INLINE (*>) #-}
   {-# INLINE (>>) #-}
   DB x >>= f = DB \n -> 
     let (x', vsx) = x $! n
@@ -109,11 +109,15 @@ instance Achille DB where
   fail s = DB \_ -> (Fail s, IntSet.empty)
   {-# INLINE fail #-}
   match pat t = DB \n ->
-    let (t', vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
+    -- remove locally-bound variables
+    -- NOTE(flupe): maybe we can pospone the filtering at evaluation
+    --              because maybe it gets in the way of compile-time translation
+    let (t', IntSet.filter (< n) -> vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
     in (Match pat t' vst, vst)
   {-# INLINE match #-}
   match_ pat t = DB \n -> 
-    let (t', vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
+    -- remove locally-bound variables
+    let (t', IntSet.filter (< n) -> vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
     in (Match_ pat t' vst, vst)
   {-# INLINE match_ #-}
   apply !r (DB x) = DB \n -> 
@@ -155,6 +159,12 @@ data BoxedValue = forall a. Boxed { unBox :: {-# UNPACK #-} !(Value a) }
 
 type Env = IntMap BoxedValue
 
+envChanged :: Env -> IntSet -> Bool
+envChanged env = IntSet.foldr' op False
+  -- NOTE(flupe): maybe we can early return once we reach True
+  where op :: Int -> Bool -> Bool
+        op ((env IntMap.!) -> Boxed v) = (|| hasChanged v)
+
 runTaskIn
   :: (Monad m, MonadFail m, AchilleIO m) 
   => Env -> Int -> Context -> Cache -> Task m a -> m (Value a, Cache)
@@ -163,8 +173,6 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
     Just (Boxed v) -> pure (unsafeCoerce v, cache)
     Nothing        -> fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
 
-  -- make Seqs right-nested to enforce associativity of cache
-  Seq (Seq x y) z -> runTaskIn env depth ctx cache (Seq x (Seq y z))
   Seq x y -> do
     let (cx, cy) = splitCache cache
     (_ , cx) <- runTaskIn env depth ctx cx x
@@ -178,13 +186,12 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
     pure (vy, joinCache cx cf)
 
   Match pat (t :: Task m b) vars -> do
-    -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
     paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat
     res :: [(Value b, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
-        Just (x, cache') | mtime <= lastTime -> pure (sameOld x, cache')
+        Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure (sameOld x, cache')
         mpast ->
           let cache' = fromMaybe emptyCache $ snd <$> mpast
               env'   = IntMap.insert depth (Boxed $ sameOld src) env
@@ -194,13 +201,12 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
     pure (joinList (fst <$> res), toCache cache')
 
   Match_ pat (t :: Task m b) vars -> do
-    -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
     paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat
     res :: [(FilePath, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
-        Just cache' | mtime <= lastTime -> pure (src, cache')
+        Just cache' | mtime <= lastTime, not (envChanged env vars) -> pure (src, cache')
         mpast ->
           let cache' = fromMaybe emptyCache $ mpast
               env'   = IntMap.insert depth (Boxed $ sameOld src) env
