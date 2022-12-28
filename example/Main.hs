@@ -7,6 +7,7 @@ import Data.Aeson    (FromJSON)
 import Data.Binary   (Binary)
 import GHC.Generics  (Generic)
 import Lucid
+import Lucid.Base qualified as Lucid
 
 import Achille as A
 import Achille.Pandoc
@@ -36,7 +37,7 @@ main = achille A.do
 
 -- telling achille how to write Lucid HTML to file
 instance Writable.Writable IO (Html ()) where
-  write = undefined
+  write p = Writable.write p . Lucid.renderBS
 
 
 outer :: Html () -> Html ()

@@ -49,7 +49,7 @@ achilleCLI = subparser $
 
 -- | Run a task in some context given a configuration.
 runAchille :: (Monad m, MonadFail m, AchilleIO m) => Config -> Task m a -> m ()
-runAchille cfg@Config{cacheFile} t = do
+runAchille cfg@Config{..} t = do
   -- 1. try to retrieve cache
   (cache, lastTime) <- do
     hasCache <- doesFileExist cacheFile
@@ -60,7 +60,10 @@ runAchille cfg@Config{cacheFile} t = do
 
   -- 2. create initial context
   let ctx :: Context = Context
-        { lastTime = lastTime
+        { lastTime   = lastTime
+        , currentDir = ""
+        , inputRoot  = contentDir
+        , outputRoot = outputDir
         }
 
   -- 3. run task in context using cache

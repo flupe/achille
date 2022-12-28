@@ -1,4 +1,5 @@
 packages:
   .
   achille-pandoc
+  achille-stache
   example

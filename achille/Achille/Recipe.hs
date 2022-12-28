@@ -13,13 +13,14 @@ module Achille.Recipe
   )
   where
 
-import Prelude hiding ((.), id)
+import Prelude hiding ((.), id, log)
 import Control.Monad (when)
 import Control.Category
 import Control.Arrow
 import Data.Time (UTCTime)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
+import System.FilePath ((</>))
 
 import Achille.Cache
 import Achille.Diffable
@@ -30,7 +31,10 @@ import Achille.Writable qualified as Writable
 
 -- | Context in which tasks and recipes are run.
 data Context = Context
-  { lastTime :: UTCTime -- ^ Time of the last run.
+  { lastTime   :: UTCTime  -- ^ Time of the last run.
+  , currentDir :: FilePath -- ^ Current directory used for glob patterns
+  , inputRoot  :: FilePath
+  , outputRoot :: FilePath
   }
 
 -- | A recipe is a glorified Kleisli arrow, computing a value of type @b@ in some monad @m@
@@ -152,9 +156,10 @@ instance Applicative m => Arrow (Recipe m) where
 readText :: (Applicative m, AchilleIO m) => Recipe m FilePath Text
 readText = Embed $ Embedded
   { rName = "readText"
-  , runEmbed = \Context{lastTime} cache v@(src, _) -> do
-      mtime <- getModificationTime src
-      txt   <- decodeUtf8 <$> AIO.readFile src
+  , runEmbed = \Context{lastTime, inputRoot} cache v@(src, _) -> do
+      let path = inputRoot </> src
+      mtime <- getModificationTime path
+      txt   <- decodeUtf8 <$> AIO.readFile path
       pure (value txt (hasChanged v || mtime > lastTime), cache)
   }
 
@@ -164,8 +169,9 @@ write
   => Recipe m (FilePath, a) FilePath
 write = Embed $ Embedded
   { rName = "write"
-  , runEmbed = \ctx cache v -> do
-      let (vsrc@(src, _), (x, _)) = splitPair v
-      when (hasChanged v) $ Writable.write src x
+  , runEmbed = \Context{currentDir, inputRoot, outputRoot} cache v@((src, x), _) -> do
+      let path = outputRoot </> src
+      let vsrc = fst (splitPair v)
+      when (hasChanged v) $ log ("Writing " <> path) *> Writable.write path x
       pure (vsrc, cache)
   }

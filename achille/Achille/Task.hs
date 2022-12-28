@@ -20,6 +20,7 @@ import Data.IntSet (IntSet)
 import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
+import System.FilePath ((</>))
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -163,9 +164,9 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
   Match pat (t :: Task m b) -> do
     -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
-    paths <- sort <$> glob "." pat -- TODO handle root directory
+    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat -- TODO handle root directory
     res :: [(Value b, Cache)] <- forM paths \src -> do
-      mtime <- getModificationTime src
+      mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
         Just (x, cache') | mtime <= lastTime -> pure (sameOld x, cache')
         mpast ->
@@ -179,9 +180,9 @@ runTaskIn env !depth ctx@Context{..} cache t = case t of
   Match_ pat (t :: Task m b) -> do
     -- TODO (flupe): watch variable use in t
     let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
-    paths <- sort <$> glob "." pat -- TODO handle root directory
+    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat -- TODO handle root directory
     res :: [(FilePath, Cache)] <- forM paths \src -> do
-      mtime <- getModificationTime src
+      mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
         Just cache' | mtime <= lastTime -> pure (src, cache')
         mpast ->
