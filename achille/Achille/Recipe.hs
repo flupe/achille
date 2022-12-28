@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ApplicativeDo, NamedFieldPuns #-}
+{-# LANGUAGE GADTs, ApplicativeDo, RecordWildCards #-}
 module Achille.Recipe
   ( Context(..)
   , Recipe(Id)
@@ -9,6 +9,7 @@ module Achille.Recipe
   , void
   , runRecipe
   , readText
+  , readByteString
   , write
   )
   where
@@ -17,6 +18,7 @@ import Prelude hiding ((.), id, log)
 import Control.Monad (when)
 import Control.Category
 import Control.Arrow
+import Data.ByteString (ByteString)
 import Data.Time (UTCTime)
 import Data.Text (Text)
 import Data.Text.Encoding (decodeUtf8)
@@ -156,10 +158,21 @@ instance Applicative m => Arrow (Recipe m) where
 readText :: (Applicative m, AchilleIO m) => Recipe m FilePath Text
 readText = Embed $ Embedded
   { rName = "readText"
-  , runEmbed = \Context{lastTime, inputRoot} cache v@(src, _) -> do
+  , runEmbed = \Context{..} cache v@(src, _) -> do
       let path = inputRoot </> src
       mtime <- getModificationTime path
       txt   <- decodeUtf8 <$> AIO.readFile path
+      pure (value txt (hasChanged v || mtime > lastTime), cache)
+  }
+
+-- | Read a bytestring from file.
+readByteString :: (Applicative m, AchilleIO m) => Recipe m FilePath ByteString
+readByteString = Embed $ Embedded
+  { rName = "readText"
+  , runEmbed = \Context{..} cache v@(src, _) -> do
+      let path = inputRoot </> src
+      mtime <- getModificationTime path
+      txt   <- AIO.readFile path
       pure (value txt (hasChanged v || mtime > lastTime), cache)
   }
 
@@ -169,7 +182,7 @@ write
   => Recipe m (FilePath, a) FilePath
 write = Embed $ Embedded
   { rName = "write"
-  , runEmbed = \Context{currentDir, inputRoot, outputRoot} cache v@((src, x), _) -> do
+  , runEmbed = \Context{..} cache v@((src, x), _) -> do
       let path = outputRoot </> src
       let vsrc = fst (splitPair v)
       when (hasChanged v) $ log ("Writing " <> path) *> Writable.write path x
