@@ -27,4 +27,6 @@ jobs:
         with:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: 'latest'
-      - run: cabal build all
+      - run: cabal build achille
+      - run: cabal build achille-pandoc
+      - run: cabal build example
