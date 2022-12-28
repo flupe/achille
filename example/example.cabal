@@ -21,9 +21,8 @@ executable example
   build-depends: base
                , achille
                , achille-pandoc
+               , achille-stache
                , aeson
-               , binary
-               , lucid
                , text
                , filepath
 
