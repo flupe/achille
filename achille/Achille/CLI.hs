@@ -15,9 +15,8 @@ import Options.Applicative
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
 import Achille.Diffable (unit)
-import Achille.Task (Task, toTask, runTask)
+import Achille.Task (Task, runTask)
 import Achille.Recipe hiding (void)
-import Achille.Syntax (Program)
 import Achille.IO (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
 
 import Data.Binary          qualified as Binary
@@ -67,7 +66,7 @@ runAchille cfg@Config{..} t = do
         }
 
   -- 3. run task in context using cache
-  (_, cache') <- runTask ctx cache t
+  (_, cache') <- runTask t ctx cache
 
   -- 4. write new cache to file
   AIO.writeFileLazy cacheFile $ Binary.encode cache'
@@ -77,18 +76,18 @@ runAchille cfg@Config{..} t = do
 
 
 -- | Top-level runner for achille tasks. Provides a CLI with several commands.
-achille :: Program IO a -> IO ()
+achille :: Task IO a -> IO ()
 achille = achilleWith defaultConfig
 {-# INLINE achille #-}
 
 
 -- | Top-level runner and CLI for achille programs, using a custom config.
-achilleWith :: Config -> Program IO a -> IO ()
-achilleWith cfg@Config{description} (toTask -> t) = customExecParser p opts >>= \case
+achilleWith :: Config -> Task IO a -> IO ()
+achilleWith cfg@Config{description} t = customExecParser p opts >>= \case
   Deploy -> putStrLn "Deploying website..."
   Clean  -> putStrLn "Deleting all artefacts"
   Build  -> void $ runAchille cfg t
-  Graph  -> print t
+  Graph  -> undefined
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
     p    = prefs showHelpOnEmpty

@@ -14,20 +14,17 @@ import Data.Aeson.Types (ToJSON)
 import Text.Mustache (Template)
 
 import Achille.IO
-import Achille.Syntax
+import Achille.Task
 import Achille.Stache.Recipe qualified as R
 
 
 -- | Load a Mustache template from file.
 --   The template will be cached and restored as long as the file hasn't changed.
-loadTemplate
-  :: Achille task
-  => task IO FilePath -> task IO Template
+loadTemplate :: Task IO FilePath -> Task IO Template
 loadTemplate = apply R.loadTemplate
-
 
 -- | Apply a Mustache template to a value.
 applyTemplate
-  :: (Achille task, Applicative m, ToJSON a)
-  => task m Template -> task m a -> task m Text
+  :: (Applicative m, ToJSON a)
+  => Task m Template -> Task m a -> Task m Text
 applyTemplate t x = apply R.applyTemplate (t :*: x)

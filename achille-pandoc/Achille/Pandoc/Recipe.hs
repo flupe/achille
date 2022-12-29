@@ -36,77 +36,41 @@ getReader ".rst"      = pure readRST
 getReader ".org"      = pure readOrg
 getReader ext = fail $ "Could not find Pandoc reader for extension " <> ext
 
-
--- * Readers
--- 
--- $readers
---
--- Some recipes to load documents with pandoc, with or without the frontmatter header.
-
--- | Read a pandoc document from path, using default reader options.
-readPandoc
-  :: (MonadFail m, Applicative m, AchilleIO m)
-  => Recipe m FilePath Pandoc
-readPandoc = readPandocWith def
-
 -- TODO(flupe): make this simpler by providing (Value a -> m (Value b)) -> Recipe m a b in achille
 
 -- | Read a pandoc document from path, using provided reader options.
 readPandocWith
   :: (MonadFail m, Applicative m, AchilleIO m)
   => ReaderOptions -> Recipe m FilePath Pandoc
-readPandocWith ropts = (id &&& readText) >>> embed Embedded
-  { rName = "readPandoc"
-  , runEmbed = \ctx cache v@((src, txt), _) -> do
-      let vt  = snd (splitPair v)
-          ext = takeExtension src
-      reader <- getReader ext
-      case runPure (reader ropts txt) of
-        Left err  -> fail $ unpack $ renderError err
-        Right doc -> pure (value doc (hasChanged vt), cache)
-  }
-
-
--- | Read a pandoc document and its frontmatter metadata from path, using default reader options.
-readPandocMeta :: (MonadFail m, AchilleIO m, FromJSON a) => Recipe m FilePath (a, Pandoc)
-readPandocMeta = readPandocMetaWith def
+readPandocWith ropts = id &&& readText >>>
+  recipe "readPandoc" \ctx cache v@((src, txt), _) -> do
+    let vt  = snd (splitPair v)
+        ext = takeExtension src
+    reader <- getReader ext
+    case runPure (reader ropts txt) of
+      Left err  -> fail $ unpack $ renderError err
+      Right doc -> pure (value doc (hasChanged vt), cache)
 
 -- | Read a pandoc document and its frontmatter metadata from path, using provided reader options.
 readPandocMetaWith
   :: (MonadFail m, AchilleIO m, FromJSON a)
   => ReaderOptions -> Recipe m FilePath (a, Pandoc)
-readPandocMetaWith ropts = (id &&& readByteString) >>> embed Embedded
-  { rName = "readPandocMeta"
-  , runEmbed = \ctx cache v@((src, bs), _) -> do
-      let vt  = snd (splitPair v)
-          ext = takeExtension src
-      reader <- getReader ext
-      case Frontmatter.parseYamlFrontmatter bs of
-        Done rest meta ->
-          case runPure (reader ropts $ decodeUtf8 rest) of
-            Left err -> fail $ src <> ": " <> unpack (renderError err)
-            Right doc -> pure (value (meta, doc) (hasChanged v), cache)
-        -- TODO(flupe): better error-reporting
-        _ -> fail $ src <> ": Could not parse YAML frontmatter"
-  }
-
-
--- * Writers
--- 
--- $writers
---
--- Some recipes to render pandoc documents to HTML.
-
--- | Convert pandoc document to text, using default writer options.
-renderPandoc :: MonadFail m => Recipe m Pandoc Text
-renderPandoc = renderPandocWith def
+readPandocMetaWith ropts = id &&& readByteString >>>
+  recipe "readPandocMeta" \ctx cache v@((src, bs), _) -> do
+    let vt  = snd (splitPair v)
+        ext = takeExtension src
+    reader <- getReader ext
+    case Frontmatter.parseYamlFrontmatter bs of
+      Done rest meta ->
+        case runPure (reader ropts $ decodeUtf8 rest) of
+          Left err -> fail $ src <> ": " <> unpack (renderError err)
+          Right doc -> pure (value (meta, doc) (hasChanged v), cache)
+      -- TODO(flupe): better error-reporting
+      _ -> fail $ src <> ": Could not parse YAML frontmatter"
 
 -- | Convert pandoc document to text, using provided writer options.
 renderPandocWith :: MonadFail m => WriterOptions -> Recipe m Pandoc Text
-renderPandocWith wopts = embed Embedded
-  { rName = "renderPandoc"
-  , runEmbed = \ctx cache v@(doc, _) -> do
-      case runPure (writeHtml5String wopts doc) of
-        Left err -> fail $ unpack $ renderError $ err
-        Right html -> pure (value html (hasChanged v), cache)
-  }
+renderPandocWith wopts = recipe "renderPandoc" \ctx cache v@(doc, _) -> do
+  case runPure (writeHtml5String wopts doc) of
+    Left err -> fail $ unpack $ renderError $ err
+    Right html -> pure (value html (hasChanged v), cache)

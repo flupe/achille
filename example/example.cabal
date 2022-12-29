@@ -13,7 +13,7 @@ executable example
                     , DeriveAnyClass
                     , RecordWildCards
                     , ImportQualifiedPost
-                    , StandaloneDeriving
+                    , DuplicateRecordFields
   build-depends: base
                , achille
                , achille-pandoc
