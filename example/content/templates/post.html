@@ -2,12 +2,13 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>My very own blog!</title>
+    <title>{{meta.title}}</title>
   </head>
   <body>
     <article>
       <header>
-        <h1>{{{meta.title}}}</h1>
+        <h1>{{meta.title}}</h1>
+        <p>Published on {{meta.date}}</p>
       </header>
       {{{content}}}
     </article>

@@ -13,10 +13,13 @@ executable example
                     , DeriveAnyClass
                     , RecordWildCards
                     , ImportQualifiedPost
+                    , StandaloneDeriving
   build-depends: base
                , achille
                , achille-pandoc
                , achille-stache
                , aeson
+               , binary
                , text
+               , time
                , filepath

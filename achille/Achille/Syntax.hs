@@ -13,6 +13,7 @@ module Achille.Syntax
   , pattern (:*:)
   , write
   , (-<.>)
+  , module Data.Binary.Instances.Time
   ) where
 
 import Prelude hiding (fst, snd, (>>), (>>=), fail)
@@ -30,6 +31,7 @@ import Achille.Writable (Writable)
 import System.FilePath  qualified as FilePath
 import Achille.Recipe   qualified as Recipe
 import Achille.Writable qualified as Writable
+import Data.Binary.Instances.Time ()
 
 
 -- | A program is a task definition, polymorphic over the kind of underlying task family.
