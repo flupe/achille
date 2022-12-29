@@ -1,1 +1,17 @@
+<!doctype html>
 <html>
+  <head>
+    <meta charset="utf-8">
+    <title>My cool blog</title>
+    <link rel="stylesheet" href="/theme.css">
+  </head>
+  <body>
+    <ul>
+      {{#posts}}
+        <li>
+          <a href="{{url}}">{{meta.title}}</a>
+        </li>
+      {{/posts}}
+    </ul>
+  </body>
+</html>

@@ -7,13 +7,16 @@ executable example
   ghc-options: -O2
   main-is:       Main.hs
   default-language: GHC2021
-  default-extensions: QualifiedDo
-                    , BlockArguments
-                    , OverloadedStrings
+  default-extensions: BlockArguments
                     , DeriveAnyClass
-                    , RecordWildCards
-                    , ImportQualifiedPost
+                    , DerivingStrategies
+                    , DerivingVia
                     , DuplicateRecordFields
+                    , ImportQualifiedPost
+                    , OverloadedRecordDot
+                    , OverloadedStrings
+                    , QualifiedDo
+                    , RecordWildCards
   build-depends: base
                , achille
                , achille-pandoc

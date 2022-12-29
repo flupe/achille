@@ -41,9 +41,8 @@ splitList :: Value [a] -> [Value a]
 splitList (xs, (changed, Nothing)) = [ value x changed | x <- xs ]
 splitList (xs, (_      , Just ds)) = zip xs ds
 
--- TODO
 joinList :: [Value a] -> Value [a]
-joinList xs = (fst <$> xs, undefined)
+joinList xs = (fst <$> xs, (any hasChanged xs, Just (snd <$> xs)))
 
 -- | Same here, we retrieve diffing information of each component of the pair.
 splitPair :: Value (a, b) -> (Value a, Value b)

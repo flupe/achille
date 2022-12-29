@@ -1,5 +1,6 @@
 module Main where
 
+import Prelude hiding (reverse, take)
 import Data.Function ((&))
 import Data.Binary (Binary(..))
 import Data.Text (Text)
@@ -17,8 +18,17 @@ data PostMeta = PostMeta
   , tags  :: Maybe [Text]
   } deriving (Generic, FromJSON, Binary)
 
-data Post     = Post { meta :: PostMeta, content :: Text }     deriving (Generic, ToJSON)
-data PostItem = PostItem { url :: FilePath, meta :: PostMeta } deriving (Generic, Binary, ToJSON)
+data Post = Post
+  { meta :: PostMeta, content :: Text } 
+  deriving (Generic, ToJSON)
+
+data Index = Index
+  { posts :: [PostItem] }
+  deriving (Generic, ToJSON)
+
+data PostItem = PostItem
+  { url :: FilePath, meta :: PostMeta }
+  deriving (Generic, Binary, ToJSON)
 
 instance ToJSON PostMeta where
   toJSON (PostMeta t d tags) = object 
@@ -38,5 +48,7 @@ main = achille A.do
             & write (src -<.> "html")
     PostItem <$> url <*> meta
 
-  applyTemplate tindex (("posts",) <$> posts :: Task IO (Text, [PostItem]))
+  mostRecent <- take 10 $ reverse $ sortOn (.meta.date) posts
+
+  applyTemplate tindex (Index <$> mostRecent)
     & write "index.html"

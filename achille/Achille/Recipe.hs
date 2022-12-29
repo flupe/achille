@@ -6,13 +6,14 @@ module Achille.Recipe
   , debug
   , write
   , -- * Recipes over lists
-    sort
+    reverse
+  , sort
   , sortOn
   , take
   , drop
   ) where
 
-import Prelude hiding (take, drop)
+import Prelude hiding (reverse, take, drop)
 import Control.Monad (when)
 import Data.Bifunctor (bimap)
 import Data.List qualified as List (sortOn)
@@ -61,13 +62,18 @@ write = recipe "write" \Context{..} cache v@((src, x), _) -> do
   when (hasChanged v) $ AIO.log ("Writing " <> path) *> Writable.write path x
   pure (vsrc, cache)
 
+
+-- | Reverse a list.
+reverse :: Applicative m => Recipe m [a] [a]
+reverse = recipe "reverse" \_ cache v -> pure (joinList (Prelude.reverse (splitList v)), cache)
+
 -- | Sort a list using the prelude @sort@.
--- Crucially this takes care of tracking change information in the list.
+--   Crucially this takes care of tracking change information in the list.
 sort :: (Applicative m, Ord a) => Recipe m [a] [a]
 sort = recipe "sort" \_ cache v -> pure (joinList (List.sortOn fst (splitList v)), cache)
 
 -- | Sort a list using the prelude @sort@.
--- Crucially this takes care of tracking change information in the list.
+--   Crucially this takes care of tracking change information in the list.
 sortOn :: (Applicative m, Ord b) => (a -> b) -> Recipe m [a] [a]
 sortOn f = recipe "sortOn" \_ cache v -> pure (joinList (List.sortOn (f . fst) (splitList v)), cache)
 

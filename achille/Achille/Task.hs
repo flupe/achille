@@ -6,13 +6,16 @@ module Achille.Task
   , write
   , (-<.>)
   , -- * Operations over lists
-    sort
+    --
+    -- $lists
+    reverse
+  , sort
   , sortOn
   , take
   , drop
   ) where
 
-import Prelude hiding (fst, snd, (>>), (>>=), fail, (.), take, drop)
+import Prelude hiding (fst, snd, (>>), (>>=), fail, (.), reverse, take, drop)
 import Control.Applicative (Applicative(liftA2))
 import Control.Category
 import Control.Arrow (arr)
@@ -55,11 +58,6 @@ instance (Applicative m, IsString a) => IsString (Task m a) where
   {-# INLINE fromString #-}
 
 
--- TODO(flupe): cache value and check change
--- instance (IsString a, Achille task) => IsString (task m a) where
---   fromString x = val (value (fromString x) False)
-
-
 -- | Pattern for destructuring and constructing /tuples/ of tasks.
 --   It is intended to be used with @QualifiedDo@, as such:
 --
@@ -89,6 +87,16 @@ write path x = apply Recipe.write (path :*: x)
 (-<.>) :: Applicative m => Task m FilePath -> Task m FilePath -> Task m FilePath
 path -<.> ext = liftA2 (FilePath.-<.>) path ext
 
+
+-- $lists
+--
+-- Usual operations on lists, lifted to tasks returning lists.
+-- Each of them was implemented so that information change of input gets
+-- propagated and preserved.
+
+-- | Sort a list using the prelude @sort@.
+reverse :: Applicative m => Task m [a] -> Task m [a]
+reverse = apply Recipe.reverse
 
 -- | Sort a list using the prelude @sort@.
 sort :: (Applicative m, Ord a) => Task m [a] -> Task m [a]
