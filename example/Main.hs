@@ -8,7 +8,6 @@ import Achille as A
 import Achille.Pandoc
 import Achille.Stache
 
-
 data PostMeta = PostMeta
   { title :: Text
   } deriving (Generic, FromJSON, ToJSON)
@@ -25,3 +24,4 @@ main = achille A.do
   match_ "posts/*.md" \src -> A.do
     meta :*: doc <- processPandocMeta src
     write (src -<.> "html") (applyTemplate tPost (Post <$> meta <*> doc))
+

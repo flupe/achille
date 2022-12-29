@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, Rank2Types, BangPatterns, RecordWildCards, ViewPatterns #-}
+{-# LANGUAGE GADTs, RecordWildCards, ViewPatterns #-}
 
 module Achille.Task
   ( Task
@@ -12,7 +12,8 @@ module Achille.Task
 import Prelude hiding ((.))
 import Control.Category
 import Control.Monad (forM)
-import Control.Applicative (Alternative, empty)
+import Control.Applicative (Alternative, empty, liftA2)
+import Control.Arrow (arr)
 import Data.Bifunctor (first)
 import Data.Binary (Binary)
 import Data.IntMap.Strict (IntMap, (!?))
@@ -20,6 +21,7 @@ import Data.IntSet (IntSet)
 import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
+import Data.String (IsString(fromString))
 import System.FilePath ((</>))
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
@@ -32,7 +34,7 @@ import Achille.Cache
 import Achille.Diffable
 import Achille.IO
 import Achille.Recipe (Context(..), Recipe(Id), runRecipe)
-import Achille.Syntax (Program, Achille)
+import Achille.Syntax (Program, Achille, apply, pair)
 import Achille.Syntax qualified as Syntax
 
 
@@ -80,12 +82,33 @@ instance Show (Task m a) where
   show (Val x) = "Val"
 
 -- | Convert a user program to its internal @Task@ representation.
-toTask :: Program m a -> Task m a
+toTask :: Applicative m => Program m a -> Task m a
 toTask p = fst $! unDB p 0
 {-# INLINE toTask #-}
 
 
 newtype DB m a = DB { unDB :: Int -> (Task m a, IntSet) }
+
+
+instance Applicative m => Functor (DB m) where
+  fmap f x = apply (arr f) x
+  {-# INLINE fmap #-}
+
+
+instance Applicative m => Applicative (DB m) where
+  -- NOTE(flupe): values lifted with @pure@ are considered to always be old.
+  --              maybe we want to make them always new, but a choice has to be made.
+  --              over or under approximating incrementality.
+  pure x = DB \_ -> (Val (value x False), IntSet.empty)
+  {-# INLINE pure #-}
+
+  liftA2 f x y = apply (arr (uncurry f)) (pair x y)
+  {-# INLINE liftA2 #-}
+
+instance (Applicative m, IsString a) => IsString (DB m a) where
+  fromString = pure . fromString
+  {-# INLINE fromString #-}
+
 
 instance Achille DB where
   DB x >> DB y = DB \n ->
@@ -96,18 +119,22 @@ instance Achille DB where
           (*>) (Seq x y) z = x *> (y *> z)
           {-# INLINE (*>) #-}
   {-# INLINE (>>) #-}
+
   DB x >>= f = DB \n -> 
     let (x', vsx) = x $! n
         (f', vsf) = unDB (f $ DB \_ -> (Var n, IntSet.singleton n)) $! n + 1
     in (Bind x' f', vsx <> vsf)
   {-# INLINE (>>=) #-}
+
   pair (DB x) (DB y) = DB \n -> 
     let (x', vsx) = x $! n
         (y', vsy) = y $! n
     in (Pair x' y', vsx <> vsy)
   {-# INLINE pair #-}
+
   fail s = DB \_ -> (Fail s, IntSet.empty)
   {-# INLINE fail #-}
+
   match pat t = DB \n ->
     -- remove locally-bound variables
     -- NOTE(flupe): maybe we can pospone the filtering at evaluation
@@ -115,10 +142,12 @@ instance Achille DB where
     let (t', IntSet.filter (< n) -> vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
     in (Match pat t' vst, vst)
   {-# INLINE match #-}
+
   match_ pat t = DB \n -> 
     -- remove locally-bound variables
     let (t', IntSet.filter (< n) -> vst) = unDB (t $ DB \_ -> (Var n, IntSet.empty)) $! n + 1
     in (Match_ pat t' vst, vst)
+
   {-# INLINE match_ #-}
   apply !r (DB x) = DB \n -> 
     let (x', vsx) = x $! n in (app r x', vsx)
@@ -128,6 +157,7 @@ instance Achille DB where
           app r x = Apply r x
           {-# INLINE app #-}
   {-# INLINE apply #-}
+
   val !x = DB \_ -> (Val x, IntSet.empty)
   {-# INLINE val #-}
 
