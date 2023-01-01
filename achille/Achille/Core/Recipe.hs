@@ -23,7 +23,7 @@ data Context = Context
   , sitePrefix :: FilePath
   }
 
-type PrimRecipe m a b = Context -> Cache -> Value a -> m (Value b, Cache) 
+type PrimRecipe m a b = Context -> Cache -> Value a -> m (Value b, Cache)
 
 -- | A recipe is a glorified Kleisli arrow, computing a value of type @b@ in some monad @m@
 --   given some input of type @a@ and a context. The recipe has access to a local cache,
@@ -66,19 +66,19 @@ runRecipe r ctx cache v = case r of
 
   f :***: g -> do -- TODO(flupe): parallelism
     let (cf, cg) = splitCache cache
-        (x, y) = splitPair v
-    (z, cf) <- runRecipe f ctx cf x
-    (w, cg) <- runRecipe g ctx cg y
-    pure (joinPair z w, joinCache cf cg)
+        (vx, vy) = splitValue v
+    (vz, cf) <- runRecipe f ctx cf vx
+    (vw, cg) <- runRecipe g ctx cg vy
+    pure (joinValue (vz, vw), joinCache cf cg)
 
   f :&&&: g -> do -- TODO(flupe): parallelism
     let (cf, cg) = splitCache cache
-    (z, cf) <- runRecipe f ctx cf v
-    (w, cg) <- runRecipe g ctx cg v
-    pure (joinPair z w, joinCache cf cg)
+    (vz, cf) <- runRecipe f ctx cf v
+    (vw, cg) <- runRecipe g ctx cg v
+    pure (joinValue (vz, vw), joinCache cf cg)
 
-  Exl  -> pure (fst $ splitPair v, cache)
-  Exr  -> pure (snd $ splitPair v, cache)
+  Exl  -> pure (fst $ splitValue v, cache)
+  Exr  -> pure (snd $ splitValue v, cache)
   Void -> pure (unit, cache)
 
   Embed n r -> r ctx cache v
@@ -107,7 +107,7 @@ instance Category (Recipe m) where
 
 instance Applicative m => Arrow (Recipe m) where
   -- TODO(flupe): maybe make some smart constructors applying category laws
-  arr f = recipe "arr" \ctx cache v@(x, _) -> pure (value (f x) (hasChanged v), cache)
+  arr f = recipe "arr" \ctx cache v -> pure (f <$> v, cache)
   {-# INLINE arr #-}
   first f = f :***: id
   {-# INLINE first #-}

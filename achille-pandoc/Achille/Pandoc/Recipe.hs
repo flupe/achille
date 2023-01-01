@@ -43,34 +43,35 @@ readPandocWith
   :: (MonadFail m, Applicative m, AchilleIO m)
   => ReaderOptions -> Recipe m FilePath Pandoc
 readPandocWith ropts = id &&& readText >>>
-  recipe "readPandoc" \ctx cache v@((src, txt), _) -> do
-    let vt  = snd (splitPair v)
-        ext = takeExtension src
+  recipe "readPandoc" \ctx cache v -> do
+    let (vsrc, vtxt) = splitValue v
+    let ext = takeExtension $ theVal vsrc
     reader <- getReader ext
-    case runPure (reader ropts txt) of
+    case runPure (reader ropts $ theVal vtxt) of
       Left err  -> fail $ unpack $ renderError err
-      Right doc -> pure (value doc (hasChanged vt), cache)
+      Right doc -> pure (value (hasChanged vtxt) doc, cache)
 
 -- | Read a pandoc document and its frontmatter metadata from path, using provided reader options.
 readPandocMetaWith
   :: (MonadFail m, AchilleIO m, FromJSON a)
   => ReaderOptions -> Recipe m FilePath (a, Pandoc)
 readPandocMetaWith ropts = id &&& readByteString >>>
-  recipe "readPandocMeta" \ctx cache v@((src, bs), _) -> do
-    let vt  = snd (splitPair v)
-        ext = takeExtension src
+  recipe "readPandocMeta" \ctx cache v -> do
+    let (vsrc, vbs) = splitValue v
+        ext = takeExtension $ theVal vsrc
     reader <- getReader ext
-    case Frontmatter.parseYamlFrontmatter bs of
+    case Frontmatter.parseYamlFrontmatter $ theVal vbs of
       Done rest meta ->
         case runPure (reader ropts $ decodeUtf8 rest) of
-          Left err -> fail $ src <> ": " <> unpack (renderError err)
-          Right doc -> pure (value (meta, doc) (hasChanged v), cache)
+          Left err -> fail $ theVal vsrc <> ": " <> unpack (renderError err)
+          Right doc -> pure (value (hasChanged v) (meta, doc), cache)
       -- TODO(flupe): better error-reporting
-      _ -> fail $ src <> ": Could not parse YAML frontmatter"
+      -- TODO(flupe): cache front-matter?
+      _ -> fail $ theVal vsrc <> ": Could not parse YAML frontmatter"
 
 -- | Convert pandoc document to text, using provided writer options.
 renderPandocWith :: MonadFail m => WriterOptions -> Recipe m Pandoc Text
-renderPandocWith wopts = recipe "renderPandoc" \ctx cache v@(doc, _) -> do
-  case runPure (writeHtml5String wopts doc) of
-    Left err -> fail $ unpack $ renderError $ err
-    Right html -> pure (value html (hasChanged v), cache)
+renderPandocWith wopts = recipe "renderPandoc" \ctx cache vdoc -> do
+  case runPure (writeHtml5String wopts $ theVal vdoc) of
+    Left err   -> fail $ unpack $ renderError $ err
+    Right html -> pure (value (hasChanged vdoc) html, cache)

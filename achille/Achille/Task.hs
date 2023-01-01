@@ -52,7 +52,7 @@ instance Applicative m => Applicative (Task m) where
   -- NOTE(flupe): values lifted with @pure@ are considered to always be old.
   --              maybe we want to make them always new, but a choice has to be made.
   --              over or under approximating incrementality.
-  pure x = val (value x False)
+  pure x = val (value False x)
   {-# INLINE pure #-}
 
   liftA2 f x y = apply (arr (uncurry f)) (pair x y)

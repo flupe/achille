@@ -35,15 +35,15 @@ unlessM b x = b >>= \case
   False -> x
 
 loadTemplate :: Recipe IO FilePath Template
-loadTemplate = recipe "loadTemplate" \Context{..} cache v@(src, _) -> do
-  let path = inputRoot </> src
+loadTemplate = recipe "loadTemplate" \Context{..} cache vsrc -> do
+  let path = inputRoot </> theVal vsrc
   unlessM (doesFileExist path) $ fail $ "Could not find template file " <> path
   mtime <- getModificationTime path
   case fromCache cache of
-    Just (t :: Template) | mtime <= lastTime, not (hasChanged v) -> pure (value t False, cache)
+    Just (t :: Template) | mtime <= lastTime, not (hasChanged vsrc) -> pure (value False t, cache)
     _ -> do
       t <- compileMustacheFile path -- TODO(flupe): handle parser exception gracefully
-      pure (value t True, toCache t)
+      pure (value True t, toCache t)
 
 loadTemplates :: Recipe IO FilePath (Map PName Template)
 loadTemplates = undefined

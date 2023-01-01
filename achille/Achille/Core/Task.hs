@@ -90,10 +90,6 @@ instance Show (Program m a) where
     Val x        -> "Val"
 
 
-sameOld :: a -> Value a
-sameOld x = value x False
-{-# INLINE sameOld #-}
-
 -- | Run a program given some context and incoming cache.
 runProgram
   :: (Monad m, MonadFail m, AchilleIO m)
@@ -136,14 +132,14 @@ runProgramIn env !depth t ctx@Context{..} cache = case t of
     res :: [(Value b, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
-        Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure (sameOld x, cache')
+        Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure (value False x, cache')
         mpast ->
           let cache' = fromMaybe emptyCache $ Prelude.snd <$> mpast
-              env'   = IntMap.insert depth (Boxed $ sameOld src) env
+              env'   = IntMap.insert depth (Boxed $ value False src) env
           in runProgramIn env' (depth + 1) t ctx cache'
     let cache' :: Map FilePath (b, Cache) =
-          Map.fromList (zip paths $ first Prelude.fst <$> res)
-    pure (joinList (Prelude.fst <$> res), toCache cache')
+          Map.fromList (zip paths $ first theVal <$> res)
+    pure (joinValue (Prelude.fst <$> res), toCache cache')
 
   Match_ pat (t :: Program m b) vars -> do
     let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
@@ -154,7 +150,7 @@ runProgramIn env !depth t ctx@Context{..} cache = case t of
         Just cache' | mtime <= lastTime, not (envChanged env vars) -> pure (src, cache')
         mpast ->
           let cache' = fromMaybe emptyCache $ mpast
-              env'   = IntMap.insert depth (Boxed $ sameOld src) env
+              env'   = IntMap.insert depth (Boxed $ value False src) env
           in (src,) . Prelude.snd <$> runProgramIn env' (depth + 1) t ctx cache'
     pure (unit, toCache $ Map.fromList res)
 
@@ -168,7 +164,7 @@ runProgramIn env !depth t ctx@Context{..} cache = case t of
     let (cx, cy) = splitCache cache
     (vx , cx) <- runProgramIn env depth x ctx cx
     (vy , cy) <- runProgramIn env depth y ctx cy
-    pure (joinPair vx vy, joinCache cx cy)
+    pure (joinValue (vx, vy), joinCache cx cy)
 
   -- TODO(flupe): error-recovery and propagation
   Fail s -> Prelude.fail s

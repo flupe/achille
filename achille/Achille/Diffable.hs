@@ -1,70 +1,80 @@
 module Achille.Diffable
-  ( HasChanged
-  , Diff
-  , Value
+  ( Value(..)
   , value
-  , hasChanged
   , unit
-  , D
-  , splitList
-  , joinList
-  , splitPair
-  , joinPair
-  , splitMap
-  , joinMap
+  , Diffable(..)
   ) where
 
 import Data.Foldable (foldMap)
+import Data.Bifunctor (bimap)
 import Data.Monoid (Any(..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as SMap
 
-type HasChanged = Bool
-type Value a = (a, Diff a)
-type Diff a = (HasChanged, Maybe (D a))
+-- | Wrapper containing a value of type @a@ and information about 
+--   how it has changed since the last run.
+data Value a = Value
+  { theVal     :: a
+  , hasChanged :: Bool
+  , changeInfo :: Maybe (ChangeInfo a)
+  }
 
-type family D a
+instance Functor Value where
+  -- for any f, we can only be conservative and assume it is injective
+  -- if the input changes, we consider the output to also change and be "dirty"
+  -- in general, we cannot give more information about the change
+  fmap f (Value x c _) = value c (f x)
 
-value :: a
-      -> Bool -- ^ whether the value has changed since the last run
-      -> Value a
-value x b = (x, (b, Nothing))
-{-# INLINE value #-}
+value
+  :: Bool -- ^ Whether the value has changed sinc the last run.
+  -> a    -- ^ The value.
+  -> Value a
+value c x = Value x c Nothing
 
--- | Whether a value has changed.
-hasChanged :: Value a -> Bool
-hasChanged (_, (b, _)) = b
-
+-- | The unit value, that never changes.
 unit :: Value ()
-unit = value () False
+unit = value False ()
 
-type instance D ()        = ()
-type instance D (a, b)    = (Diff a, Diff b)
-type instance D [a]       = [Diff a]
-type instance D (Map k v) = Map k (Diff v)
+-- | Typeclass for things that carry more information about change between runs.
+class Diffable a where
+  type ChangeInfo a :: *
 
--- | For types that extend the type family @D@, it's possible
--- to retrieve inner diffing information.
-splitList :: Value [a] -> [Value a]
-splitList (xs, (changed, Nothing)) = [ value x changed | x <- xs ]
-splitList (xs, (_      , Just ds)) = zip xs ds
+  splitValue :: Value a -> ChangeInfo a
+  joinValue  :: ChangeInfo a -> Value a
 
-joinList :: [Value a] -> Value [a]
-joinList xs = (fst <$> xs, (any hasChanged xs, Just (snd <$> xs)))
+-- TODO: instances for foldable functors (overlappable)?
 
--- | Same here, we retrieve diffing information of each component of the pair.
-splitPair :: Value (a, b) -> (Value a, Value b)
-splitPair ((x, y), (changed, Nothing)) = (value x changed, value y changed)
-splitPair ((x, y), (_, Just (dx, dy))) = ((x, dx), (y, dy))
+instance Diffable (a, b) where
+  type ChangeInfo (a, b) = (Value a, Value b)
 
-joinPair :: Value a -> Value b -> Value (a, b)
-joinPair (x, (cx, dx)) (y, (cy, dy)) =
-  ((x, y), (cx || cy, Just ((cx, dx), (cy, dy))))
+  splitValue :: Value (a, b) -> (Value a, Value b)
+  splitValue (Value (x, y) c Nothing) = (value c x, value c y)
+  splitValue (Value _ c (Just vs)) = vs
 
--- | Same here, we retrieve diffing information of each component of the map.
-splitMap :: Ord k => Value (Map k v) -> Map k (Value v)
-splitMap (m, (cm, Nothing)) = fmap (\x -> value x cm) m
-splitMap (m, (cm, Just dm)) = SMap.intersectionWith (,) m dm
+  joinValue :: (Value a, Value b) -> Value (a, b)
+  joinValue c@(x, y) =
+    Value (theVal x, theVal y)
+          (hasChanged x || hasChanged y)
+          (Just c)
 
-joinMap :: Map k (Value v) -> Value (Map k v)
-joinMap m = (fst <$> m, (getAny $ foldMap (Any . hasChanged) m, Just $ snd <$> m))
+
+instance Diffable [a] where
+  type ChangeInfo [a] = [Value a]
+
+  splitValue :: Value [a] -> [Value a]
+  splitValue (Value xs c Nothing) = map (value c) xs
+  splitValue (Value _ _ (Just vs)) = vs
+
+  joinValue :: [Value a] -> Value [a]
+  joinValue vs = Value (map theVal vs) (any hasChanged vs) (Just vs)
+
+
+instance Ord k => Diffable (Map k v) where
+  type ChangeInfo (Map k v) = Map k (Value v)
+
+  splitValue :: Value (Map k v) -> Map k (Value v)
+  splitValue (Value m c Nothing) = value c <$> m
+  splitValue (Value _ _ (Just mv)) = mv
+  
+  joinValue :: Map k (Value v) -> Value (Map k v)
+  joinValue mv = Value (theVal <$> mv) (getAny (foldMap (Any . hasChanged) mv)) (Just mv)
