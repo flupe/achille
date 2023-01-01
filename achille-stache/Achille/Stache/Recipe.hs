@@ -1,5 +1,5 @@
 {-# LANGUAGE StandaloneDeriving, RecordWildCards #-}
-module Achille.Stache.Recipe 
+module Achille.Stache.Recipe
   ( loadTemplate
   , loadTemplates
   , applyTemplate

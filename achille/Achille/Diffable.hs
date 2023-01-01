@@ -10,7 +10,14 @@ module Achille.Diffable
   , joinList
   , splitPair
   , joinPair
+  , splitMap
+  , joinMap
   ) where
+
+import Data.Foldable (foldMap)
+import Data.Monoid (Any(..))
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as SMap
 
 type HasChanged = Bool
 type Value a = (a, Diff a)
@@ -31,9 +38,10 @@ hasChanged (_, (b, _)) = b
 unit :: Value ()
 unit = value () False
 
-type instance D ()     = ()
-type instance D (a, b) = (Diff a, Diff b)
-type instance D [a]    = [Diff a]
+type instance D ()        = ()
+type instance D (a, b)    = (Diff a, Diff b)
+type instance D [a]       = [Diff a]
+type instance D (Map k v) = Map k (Diff v)
 
 -- | For types that extend the type family @D@, it's possible
 -- to retrieve inner diffing information.
@@ -52,3 +60,11 @@ splitPair ((x, y), (_, Just (dx, dy))) = ((x, dx), (y, dy))
 joinPair :: Value a -> Value b -> Value (a, b)
 joinPair (x, (cx, dx)) (y, (cy, dy)) =
   ((x, y), (cx || cy, Just ((cx, dx), (cy, dy))))
+
+-- | Same here, we retrieve diffing information of each component of the map.
+splitMap :: Ord k => Value (Map k v) -> Map k (Value v)
+splitMap (m, (cm, Nothing)) = fmap (\x -> value x cm) m
+splitMap (m, (cm, Just dm)) = SMap.intersectionWith (,) m dm
+
+joinMap :: Map k (Value v) -> Value (Map k v)
+joinMap m = (fst <$> m, (getAny $ foldMap (Any . hasChanged) m, Just $ snd <$> m))

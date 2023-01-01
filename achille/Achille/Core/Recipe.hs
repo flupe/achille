@@ -20,6 +20,7 @@ data Context = Context
   , currentDir :: FilePath -- ^ Current directory used for glob patterns
   , inputRoot  :: FilePath
   , outputRoot :: FilePath
+  , sitePrefix :: FilePath
   }
 
 type PrimRecipe m a b = Context -> Cache -> Value a -> m (Value b, Cache) 

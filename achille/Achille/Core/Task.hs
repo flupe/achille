@@ -196,6 +196,7 @@ T x >> T y = T \n ->
   in (seq x' y', vsx <> vsy)
  where seq :: Program m a -> Program m b -> Program m b
        seq (Seq x y) z = x `seq` (y `seq` z)
+       seq x y = Seq x y
        {-# INLINE seq #-}
 {-# INLINE (>>) #-}
 

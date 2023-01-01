@@ -5,6 +5,7 @@ module Achille.Recipe
   , readByteString
   , debug
   , write
+  , copy
   , -- * Recipes over lists
     reverse
   , sort
@@ -56,12 +57,23 @@ write
   :: (Applicative m, AchilleIO m, Writable m a)
   => Recipe m (FilePath, a) FilePath
 write = recipe "write" \Context{..} cache v@((src, x), _) -> do
-  let path = outputRoot </> src
+  let path = outputRoot </> sitePrefix </> src
   let vsrc = fst (splitPair v)
   -- NOTE(flupe): maybe also when the output file is no longer here
   when (hasChanged v) $ AIO.log ("Writing " <> path) *> Writable.write path x
-  pure (vsrc, cache)
+  pure (value ("/" <> sitePrefix </> src) (hasChanged v), cache)
 
+-- | Copies a file to the output path, preserving its name.
+copy :: (Monad m, AchilleIO m) => Recipe m FilePath FilePath
+copy = recipe "copy" \Context{..} cache v@(src, _) -> do
+  let ipath = inputRoot </> src
+  let opath = outputRoot </> sitePrefix </> src
+  -- TODO(flupe): check if file exists
+  -- TODO(flupe): check if output file is there?
+  time <- getModificationTime ipath
+  when (hasChanged v || time > lastTime) $
+    AIO.log ("Copying " <> ipath) *> AIO.copyFile ipath opath
+  pure (value ("/" <> sitePrefix </> src) (hasChanged v), cache)
 
 -- | Reverse a list.
 reverse :: Applicative m => Recipe m [a] [a]

@@ -39,6 +39,8 @@ instance ToJSON PostMeta where
 
 main :: IO ()
 main = achille A.do
+  match_ "assets/*" copy
+
   tpost  <- loadTemplate "templates/post.html"
   tindex <- loadTemplate "templates/index.html"
 

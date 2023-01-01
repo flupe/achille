@@ -4,6 +4,7 @@ module Achille.Task
   ( module Achille.Core.Task
   , pattern (:*:)
   , write
+  , copy
   , (-<.>)
   , -- * Operations over lists
     --
@@ -13,6 +14,9 @@ module Achille.Task
   , sortOn
   , take
   , drop
+  , -- * Operations over maps
+    --
+    -- $maps
   ) where
 
 import Prelude hiding (fst, snd, (>>), (>>=), fail, (.), reverse, take, drop)
@@ -20,6 +24,7 @@ import Control.Applicative (Applicative(liftA2))
 import Control.Category
 import Control.Arrow (arr)
 import Data.Binary (Binary)
+import Data.Map.Strict (Map)
 import Data.String (IsString(fromString))
 import System.FilePath.Glob (Pattern)
 
@@ -64,10 +69,10 @@ instance (Applicative m, IsString a) => IsString (Task m a) where
 -- > {-# LANGUAGE QualifiedDo #-}
 -- > import Achille as A
 -- >
--- > doStuff     :: Program IO (Text, Bool)
--- > doMoreStuff :: Program IO (Bool, Text) -> Program IO String
+-- > doStuff     :: Task IO (Text, Bool)
+-- > doMoreStuff :: Task IO (Bool, Text) -> Task IO String
 -- >
--- > rules :: Program IO String
+-- > rules :: Task IO String
 -- > rules = A.do
 -- >   x :*: y <- doStuff
 -- >   doMoreStuff (y :*: x)
@@ -83,6 +88,11 @@ write
   :: (AchilleIO m, Monad m, Writable m a)
   => Task m FilePath -> Task m a -> Task m FilePath
 write path x = apply Recipe.write (path :*: x)
+
+copy
+  :: (AchilleIO m, Monad m)
+  => Task m FilePath -> Task m FilePath
+copy = apply Recipe.copy
 
 (-<.>) :: Applicative m => Task m FilePath -> Task m FilePath -> Task m FilePath
 path -<.> ext = liftA2 (FilePath.-<.>) path ext
@@ -114,3 +124,14 @@ take n = apply (Recipe.take n)
 -- | Drop the first @n@ elements of the input list.
 drop :: Applicative m => Int -> Task m [a] -> Task m [a]
 drop n = apply (Recipe.drop n)
+
+
+-- $maps
+--
+-- Usual operations on ordered maps from keys to values, lifted to tasks.
+-- Each of them was implemented so that information change of input gets
+-- propagated and preserved.
+
+infixl 9 !
+(!) :: (Ord k, MonadFail m) => Task m (Map k a) -> Task m k -> Task m a
+(!) m k = apply undefined (m :*: k)

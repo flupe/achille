@@ -63,6 +63,7 @@ runAchille cfg@Config{..} t = do
         , currentDir = ""
         , inputRoot  = contentDir
         , outputRoot = outputDir
+        , sitePrefix = sitePrefix
         }
 
   -- 3. run task in context using cache
