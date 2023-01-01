@@ -17,6 +17,7 @@ module Achille.Task
   , -- * Operations over maps
     --
     -- $maps
+    (!)
   ) where
 
 import Prelude hiding (fst, snd, (>>), (>>=), fail, (.), reverse, take, drop)
@@ -133,5 +134,5 @@ drop n = apply (Recipe.drop n)
 -- propagated and preserved.
 
 infixl 9 !
-(!) :: (Ord k, MonadFail m) => Task m (Map k a) -> Task m k -> Task m a
-(!) m k = apply undefined (m :*: k)
+(!) :: (Applicative m, Ord k) => Task m (Map k a) -> Task m k -> Task m a
+(!) m k = apply (Recipe.!) (m :*: k)

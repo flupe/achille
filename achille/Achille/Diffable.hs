@@ -1,3 +1,4 @@
+{-# LANGUAGE DefaultSignatures, TypeFamilyDependencies #-}
 module Achille.Diffable
   ( Value(..)
   , value
@@ -5,7 +6,7 @@ module Achille.Diffable
   , Diffable(..)
   ) where
 
-import Data.Foldable (foldMap)
+import Data.Foldable (Foldable(..), foldMap)
 import Data.Bifunctor (bimap)
 import Data.Monoid (Any(..))
 import Data.Map.Strict (Map)
@@ -35,14 +36,15 @@ value c x = Value x c Nothing
 unit :: Value ()
 unit = value False ()
 
+
 -- | Typeclass for things that carry more information about change between runs.
 class Diffable a where
-  type ChangeInfo a :: *
+  type ChangeInfo a = r | r -> a
 
   splitValue :: Value a -> ChangeInfo a
+
   joinValue  :: ChangeInfo a -> Value a
 
--- TODO: instances for foldable functors (overlappable)?
 
 instance Diffable (a, b) where
   type ChangeInfo (a, b) = (Value a, Value b)

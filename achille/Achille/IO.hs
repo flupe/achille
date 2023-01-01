@@ -28,6 +28,8 @@ class AchilleIO m where
     doesFileExist :: FilePath -> m Bool
     -- | Check whether a directory exists.
     doesDirExist :: FilePath -> m Bool
+    -- | Return all entries in directory, without special entries like @.@ and @..@.
+    listDir :: FilePath -> m [FilePath]
     -- | Run a shell command in a new process.
     callCommand :: String -> m ()
     -- | Run a shell command in a new process.
@@ -35,8 +37,10 @@ class AchilleIO m where
     -- | Log a string to stdout.
     log :: String -> m ()
     -- | Find all paths matching a given globpattern, relative to a given directory.
-    glob :: FilePath -- ^ Path of the root directory.
+    --   All paths returned are relative to the current working directory.
+    glob :: FilePath -- ^ Path of the prefix directory
          -> Glob.Pattern -> m [FilePath]
+    -- TODO(flupe): ^ really think about current working dir, absolute paths and prefixes
     -- | Get modification time of a file.
     getModificationTime :: FilePath -> m UTCTime
 
@@ -54,11 +58,9 @@ instance AchilleIO IO where
     writeFileLazy to x   = ensureDirExists to *> LBS.writeFile to x
     doesFileExist        = Directory.doesFileExist
     doesDirExist         = Directory.doesDirectoryExist
+    listDir              = Directory.listDirectory
     callCommand          = Process.callCommand
     readCommand cmd args = Process.readProcess cmd args []
     log                  = Prelude.putStrLn
-    glob dir pattern     =
-      Directory.withCurrentDirectory dir $
-          Glob.globDir1 pattern ""
-          >>= mapM Directory.makeRelativeToCurrentDirectory
+    glob dir pattern     = Glob.globDir1 pattern dir
     getModificationTime  = Directory.getModificationTime

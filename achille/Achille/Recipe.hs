@@ -12,18 +12,21 @@ module Achille.Recipe
   , sortOn
   , take
   , drop
+  , (!)
   ) where
 
 import Prelude hiding (reverse, take, drop)
 import Control.Monad (when)
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first)
 import Data.List qualified as List (sortOn)
+import Data.Map.Strict (Map)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8)
 import Data.ByteString (ByteString)
 import System.FilePath ((</>))
 
 import Prelude qualified
+import Data.Map.Strict qualified as Map
 
 import Achille.IO as AIO
 import Achille.Diffable
@@ -98,3 +101,13 @@ take n = recipe "take" \_ cache v -> pure (joinValue (Prelude.take n (splitValue
 -- | Drop the first @n@ elements of the input list.
 drop :: Applicative m => Int -> Recipe m [a] [a]
 drop n = recipe "drop" \_ cache v -> pure (joinValue (Prelude.drop n (splitValue v)), cache)
+
+-----------
+
+(!) :: (Applicative m, Ord k) => Recipe m (Map k v, k) v
+(!) = recipe "(!)" \_ cache v -> do
+  let (vm, vk) = splitValue v
+  let vs = splitValue vm
+  let vv = if hasChanged vk then value True (theVal vm Map.! theVal vk)
+                            else vs Map.! theVal vk
+  pure (vv, cache)

@@ -23,6 +23,8 @@ import Data.Binary          qualified as Binary
 import Achille.IO           qualified as AIO
 import Data.ByteString.Lazy qualified as LBS
 
+import Achille.Core.Task (toProgram)
+
 
 -- TODO(flupe): make the CLI interace extensible
 -- TODO(flupe): add ignore list
@@ -88,7 +90,7 @@ achilleWith cfg@Config{description} t = customExecParser p opts >>= \case
   Deploy -> putStrLn "Deploying website..."
   Clean  -> putStrLn "Deleting all artefacts"
   Build  -> void $ runAchille cfg t
-  Graph  -> undefined
+  Graph  -> print (toProgram t)
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
     p    = prefs showHelpOnEmpty

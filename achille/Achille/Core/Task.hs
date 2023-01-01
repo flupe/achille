@@ -11,6 +11,7 @@ module Achille.Core.Task
   , match_
   , apply
   , val
+  , toProgram
   ) where
 
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
@@ -21,6 +22,7 @@ import Control.Applicative (Alternative, empty, liftA2)
 import Control.Arrow
 
 import Data.Binary (Binary)
+import Data.Functor ((<&>))
 import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
 import Data.List (sort)
@@ -29,7 +31,7 @@ import Data.Maybe (fromMaybe)
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
 
-import System.FilePath ((</>))
+import System.FilePath ((</>), makeRelative)
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -94,76 +96,87 @@ instance Show (Program m a) where
 runProgram
   :: (Monad m, MonadFail m, AchilleIO m)
   => Program m a -> Context -> Cache -> m (Value a, Cache)
-runProgram = runProgramIn IntMap.empty 0
+runProgram = runProgramIn emptyEnv
 {-# INLINE runProgram #-}
 
+
 data BoxedValue = forall a. Boxed { unBox :: {-# UNPACK #-} !(Value a) }
-type Env = IntMap BoxedValue
+
+data Env = Env (IntMap BoxedValue) {-# UNPACK #-} !Int
+
+emptyEnv :: Env
+emptyEnv = Env IntMap.empty 0
+
+lookupEnv :: Env -> Int -> Maybe a
+lookupEnv (Env env n) k = env !? k <&> \(Boxed v) -> unsafeCoerce v
+
+bindEnv :: Env -> Value a -> Env
+bindEnv (Env env n) x = Env (IntMap.insert n (Boxed x) env) (n + 1)
 
 envChanged :: Env -> IntSet -> Bool
-envChanged env = IntSet.foldr' op False
+envChanged (Env env _) = IntSet.foldr' op False
   -- NOTE(flupe): maybe we can early return once we reach True
   where op :: Int -> Bool -> Bool
         op ((env IntMap.!) -> Boxed v) = (|| hasChanged v)
 
 runProgramIn
   :: (Monad m, MonadFail m, AchilleIO m) 
-  => Env -> Int -> Program m a -> Context -> Cache -> m (Value a, Cache)
-runProgramIn env !depth t ctx@Context{..} cache = case t of
-  Var k -> case env !? k of
-    Just (Boxed v) -> pure (unsafeCoerce v, cache)
-    Nothing        -> Prelude.fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
+  => Env -> Program m a -> Context -> Cache -> m (Value a, Cache)
+runProgramIn env t ctx@Context{..} cache = case t of
+  Var k -> case lookupEnv env k of
+    Just v   -> pure (v, cache)
+    Nothing  -> Prelude.fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
 
   Seq x y -> do
     let (cx, cy) = splitCache cache
-    (_ , cx) <- runProgramIn env depth x ctx cx
-    (vy, cy) <- runProgramIn env depth y ctx cy
+    (_ , cx) <- runProgramIn env x ctx cx
+    (vy, cy) <- runProgramIn env y ctx cy
     pure (vy, joinCache cx cy)
 
   Bind x f -> do
     let (cx, cf) = splitCache cache
-    (vx , cx) <- runProgramIn env depth x ctx cx
-    (vy , cf) <- runProgramIn (IntMap.insert depth (Boxed vx) env) (depth + 1) f ctx cf
+    (vx , cx) <- runProgramIn env x ctx cx
+    (vy , cf) <- runProgramIn (bindEnv env vx) f ctx cf
     pure (vy, joinCache cx cf)
 
   Match pat (t :: Program m b) vars -> do
     let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
-    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat
+    paths <- sort . (fmap (makeRelative inputRoot)) <$> glob (inputRoot </> currentDir) pat
     res :: [(Value b, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
         Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure (value False x, cache')
         mpast ->
           let cache' = fromMaybe emptyCache $ Prelude.snd <$> mpast
-              env'   = IntMap.insert depth (Boxed $ value False src) env
-          in runProgramIn env' (depth + 1) t ctx cache'
+              env'   = bindEnv env (value False src)
+          in runProgramIn env' t ctx cache'
     let cache' :: Map FilePath (b, Cache) =
           Map.fromList (zip paths $ first theVal <$> res)
     pure (joinValue (Prelude.fst <$> res), toCache cache')
 
   Match_ pat (t :: Program m b) vars -> do
     let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
-    paths <- sort . (fmap (currentDir </>)) <$> glob (inputRoot </> currentDir) pat
+    paths <- sort . (fmap (makeRelative inputRoot)) <$> glob (inputRoot </> currentDir) pat
     res :: [(FilePath, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
         Just cache' | mtime <= lastTime, not (envChanged env vars) -> pure (src, cache')
         mpast ->
           let cache' = fromMaybe emptyCache $ mpast
-              env'   = IntMap.insert depth (Boxed $ value False src) env
-          in (src,) . Prelude.snd <$> runProgramIn env' (depth + 1) t ctx cache'
+              env'   = bindEnv env (value False src)
+          in (src,) . Prelude.snd <$> runProgramIn env' t ctx cache'
     pure (unit, toCache $ Map.fromList res)
 
   Apply r x -> do
     let (cx, cr) = splitCache cache
-    (vx, cx) <- runProgramIn env depth x ctx cx
+    (vx, cx) <- runProgramIn env x ctx cx
     (vy, cr) <- runRecipe r ctx cr vx
     pure (vy, joinCache cx cr)
 
   Pair x y -> do
     let (cx, cy) = splitCache cache
-    (vx , cx) <- runProgramIn env depth x ctx cx
-    (vy , cy) <- runProgramIn env depth y ctx cy
+    (vx , cx) <- runProgramIn env x ctx cx
+    (vy , cy) <- runProgramIn env y ctx cy
     pure (joinValue (vx, vy), joinCache cx cy)
 
   -- TODO(flupe): error-recovery and propagation
@@ -177,6 +190,9 @@ runProgramIn env !depth t ctx@Context{..} cache = case t of
 
 -- | Core abstraction for build tasks.
 newtype Task m a = T { unTask :: Int -> (Program m a, IntSet) }
+
+toProgram :: Task m a -> Program m a
+toProgram t = Prelude.fst $! unTask t 0
 
 runTask
   :: (Monad m, MonadFail m, AchilleIO m)

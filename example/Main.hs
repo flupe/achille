@@ -40,17 +40,15 @@ instance ToJSON PostMeta where
 main :: IO ()
 main = achille A.do
   match_ "assets/*" copy
-
-  tpost  <- loadTemplate "templates/post.html"
-  tindex <- loadTemplate "templates/index.html"
+  templates <- loadTemplates "templates"
 
   posts <- match "posts/*.md" \src -> A.do
     meta :*: content <- processPandocMeta src
-    url <- applyTemplate tpost (Post <$> meta <*> content) 
-            & write (src -<.> "html")
+    url <- applyTemplate (templates ! "post") (Post <$> meta <*> content) 
+             & write (src -<.> "html")
     PostItem <$> url <*> meta
 
-  mostRecent <- take 10 $ reverse $ sortOn (.meta.date) posts
+  mostRecent <- sortOn (.meta.date) posts & reverse & take 10
 
-  applyTemplate tindex (Index <$> mostRecent)
+  applyTemplate (templates ! "index") (Index <$> mostRecent)
     & write "index.html"
