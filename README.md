@@ -17,7 +17,11 @@
 **achille** is an embedded Haskell DSL for building incremental static site generators.
 
 It has a very simple abstraction for composable build rules, a straightforward
-implementation and very few dependencies.
+implementation and few dependencies.
 
-For more information on how **achille** works and how to use it, you can [read the
-documentation](https://acatalepsie.fr/projects/achille/).
+For troubleshooting, general questions or suggestions, feel free to send a mail
+to the public mailing list [~flupe/achille@lists.sr.ht][list]. Archives are
+available [here][archives].
+
+[list]: mailto:~flupe/achille@lists.sr.ht
+[archives]: https://lists.sr.ht/~flupe/achille
