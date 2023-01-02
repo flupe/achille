@@ -45,25 +45,6 @@ import Achille.Core.Task
 import Data.Binary.Instances.Time ()
 
 
-instance Applicative m => Functor (Task m) where
-  fmap f x = apply (arr f) x
-  {-# INLINE fmap #-}
-
-instance Applicative m => Applicative (Task m) where
-  -- NOTE(flupe): values lifted with @pure@ are considered to always be old.
-  --              maybe we want to make them always new, but a choice has to be made.
-  --              over or under approximating incrementality.
-  pure x = val (value False x)
-  {-# INLINE pure #-}
-
-  liftA2 f x y = apply (arr (uncurry f)) (pair x y)
-  {-# INLINE liftA2 #-}
-
-instance (Applicative m, IsString a) => IsString (Task m a) where
-  fromString = pure . fromString
-  {-# INLINE fromString #-}
-
-
 -- | Pattern for destructuring and constructing /tuples/ of tasks.
 --   It is intended to be used with @QualifiedDo@, as such:
 --
