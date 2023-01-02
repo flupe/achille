@@ -58,7 +58,7 @@ data Program m a where
        -> Program m b
 
   -- File matching
-  Match  :: Binary b
+  Match  :: (Eq b, Binary b)
          => !Pattern
          -> Program m b -- ^ has a filepath in scope
          -> IntSet
@@ -146,10 +146,16 @@ runProgramIn env t ctx@Context{..} cache = case t of
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
         Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure (value False x, cache')
-        mpast ->
+        mpast -> do
           let cache' = fromMaybe emptyCache $ Prelude.snd <$> mpast
               env'   = bindEnv env (value False src)
-          in runProgramIn env' t ctx cache'
+          (t, cache'') <- runProgramIn env' t ctx cache'
+          -- TODO(flupe): refactor this, make this pretty
+          let t' = 
+                case mpast of
+                  Just r@(ot, ocache) | ot == theVal t -> (value False ot, ocache)
+                  _                                    -> (t, cache'')
+          pure t'
     let cache' :: Map FilePath (b, Cache) =
           Map.fromList (zip paths $ first theVal <$> res)
     pure (joinValue (Prelude.fst <$> res), toCache cache')
@@ -244,7 +250,7 @@ fail s = T \_ -> (Fail s, IntSet.empty)
 --   collect all results in a list.
 --   @match@ caches the list, and only triggers the Task on a given path if
 --   the underlying file is new or has changed since the last run.
-match :: Binary b => Pattern -> (Task m FilePath -> Task m b) -> Task m [b]
+match :: (Binary b, Eq b) => Pattern -> (Task m FilePath -> Task m b) -> Task m [b]
 match pat t = T \n ->
   -- remove locally-bound variables
   -- NOTE(flupe): maybe we can pospone the filtering at evaluation

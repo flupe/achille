@@ -16,7 +16,7 @@ data PostMeta = PostMeta
   { title :: Text
   , date  :: UTCTime
   , tags  :: Maybe [Text]
-  } deriving (Generic, FromJSON, Binary)
+  } deriving (Eq, Generic, FromJSON, Binary)
 
 data Post = Post
   { meta :: PostMeta, content :: Text } 
@@ -28,7 +28,7 @@ data Index = Index
 
 data PostItem = PostItem
   { url :: FilePath, meta :: PostMeta }
-  deriving (Generic, Binary, ToJSON)
+  deriving (Eq, Generic, Binary, ToJSON)
 
 instance ToJSON PostMeta where
   toJSON (PostMeta t d tags) = object 
