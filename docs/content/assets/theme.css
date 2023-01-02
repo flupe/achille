@@ -1,0 +1,109 @@
+:root {
+  --width: 640px;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.6em;
+  font-family: serif;
+}
+
+body > header {
+  background: #e6ebd1;
+  margin-bottom: 2em;
+}
+
+body > header > section {
+  width: var(--width);
+  margin: 0 auto;
+  line-height: 24px;
+  height: 24px;
+  padding: 1em;
+  display: flex;
+  flex-direction: row;
+}
+
+body > header > section svg {
+  aspect-ratio: 1 / 1;
+  height: 100%;
+  opacity: .7;
+}
+
+body > header > section p {
+  margin: 0 0 1em;
+}
+
+body > header > section nav {
+  text-align: right;
+  flex: 1;
+}
+
+body > header > section nav a {
+  font-size: .9em;
+}
+
+body > header > section nav a:visited {
+  color: inherit
+}
+
+body > section {
+  display: grid;
+  gap: 2em;
+  grid-template-columns: 1fr var(--width) 1fr;
+}
+
+body > section > main {
+  grid-column: 2;
+}
+
+body > section > main > *:first-child { margin-top: 0 }
+body > section > main > *:last-child { margin-bottom: 0 }
+
+body > section > nav {
+  text-align: right;
+  grid-column: 1;
+}
+
+body > section > nav ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+body > section > nav ul li + li {
+  margin-top: .5em;
+}
+
+body > section > nav a {
+  text-decoration: none;
+}
+
+body > section > nav a.current {
+  border-bottom: 2px solid #000;
+}
+
+body > footer {
+  width: var(--width);
+  margin: 2em auto 0;
+  padding: 2em 0;
+  border-top: 1px solid #ddd;
+  color: #333;
+}
+
+div.sourceCode {
+  background: #eee;
+  margin: 2em 0;
+  padding: .5em 1em;
+}
+
+div.sourceCode pre {
+  margin: 0;
+}
+
+hr {
+  border: none;
+  margin: 2em auto;
+  border-top: 1px solid #ddd;
+}

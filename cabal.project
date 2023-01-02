@@ -2,4 +2,5 @@ packages:
   .
   achille-pandoc
   achille-stache
+  docs
   example

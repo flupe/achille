@@ -7,7 +7,8 @@ import Control.Category
 import Data.Aeson             (FromJSON)
 import Data.Text              (Text)
 import Text.Pandoc.Definition (Pandoc)
-import Text.Pandoc.Options    (ReaderOptions, WriterOptions, def)
+import Text.Pandoc.Options    (ReaderOptions(readerExtensions), WriterOptions, def)
+import Text.Pandoc.Extensions (pandocExtensions)
 import Text.Pandoc.Class (PandocMonad)
 
 import Achille.IO
@@ -25,7 +26,7 @@ import Achille.Pandoc.Recipe qualified as R
 readPandoc
   :: (MonadFail m, AchilleIO m)
   => Task m FilePath -> Task m Pandoc
-readPandoc = readPandocWith def
+readPandoc = readPandocWith def { readerExtensions = pandocExtensions }
 
 -- | Read a pandoc document from path, using provided reader options.
 readPandocWith
@@ -70,7 +71,7 @@ renderPandocWith wopts = apply (R.renderPandocWith wopts)
 -- | Read a pandoc document from path using default reader options,
 --   and convert to text using default writer options.
 processPandoc :: (MonadFail m, AchilleIO m) => Task m FilePath -> Task m Text
-processPandoc = processPandocWith def def
+processPandoc = processPandocWith def {readerExtensions = pandocExtensions} def
 
 -- | Read a pandoc document from path and convert to text,
 --   using the provided reader and writer options.
@@ -85,7 +86,7 @@ processPandocWith ropts wopts = renderPandocWith wopts . readPandocWith ropts
 processPandocMeta
   :: (MonadFail m, AchilleIO m, FromJSON a)
   => Task m FilePath -> Task m (a, Text)
-processPandocMeta = processPandocMetaWith def def
+processPandocMeta = processPandocMetaWith def {readerExtensions = pandocExtensions} def
 
 -- | Read a pandoc document and its frontmatter metadata from path,
 --   and convert document to text using the provided reader and writer
