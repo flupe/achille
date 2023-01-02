@@ -5,7 +5,7 @@ title: achille
 **achille** is a Haskell EDSL for writing *incremental static site generators*.
 It enables you to write succinct, idiomatic Haskell code to describe the build process
 of your very own website. Once compiled, this code yields a *fast*, *incremental*
-and *parallel* site generator executable.
+and *parallel* custom site generator.
 
 
 The following code:
@@ -13,12 +13,9 @@ The following code:
 ```haskell
 import Achille as A
 
-main :: IO ()
-main :: achille A.do
+main = achille A.do
   match_ "assets/*" copy
-
   templates <- loadTemplates "templates"
-
   match_ "posts/*.md" \src -> A.do
     meta :*: content <- processPandoc src
     applyTemplate (templates ! "post") (Post <$> meta <*> content)

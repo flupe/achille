@@ -11,12 +11,12 @@ body {
 }
 
 body > header {
-  background: #e6ebd1;
+  background: #d0d9d5;
   margin-bottom: 2em;
 }
 
 body > header > section {
-  width: var(--width);
+  max-width: var(--width);
   margin: 0 auto;
   line-height: 24px;
   height: 24px;
@@ -29,6 +29,10 @@ body > header > section svg {
   aspect-ratio: 1 / 1;
   height: 100%;
   opacity: .7;
+}
+
+main ul {
+  padding: 0 0 0 2em;
 }
 
 body > header > section p {
@@ -50,8 +54,31 @@ body > header > section nav a:visited {
 
 body > section {
   display: grid;
+  padding: 0 1em;
   gap: 2em;
-  grid-template-columns: 1fr var(--width) 1fr;
+  grid-template-columns: 1fr minmax(min-content, var(--width)) 1fr;
+}
+
+@media(max-width: 860px) {
+  body > section {
+    max-width: var(--width);
+    margin: 0 auto;
+    display: block;
+  }
+
+  body > section > nav {
+    margin-bottom: 2em;
+  }
+
+  body > section > nav ul {
+    text-align: center;
+  }
+
+  body > section > nav ul li {
+    display: inline-block;
+    margin: 0 .5em;
+  }
+
 }
 
 body > section > main {
@@ -84,9 +111,8 @@ body > section > nav a.current {
   border-bottom: 2px solid #000;
 }
 
-body > footer {
-  width: var(--width);
-  margin: 2em auto 0;
+main > footer {
+  margin: 2em 0 0;
   padding: 2em 0;
   border-top: 1px solid #ddd;
   color: #333;
@@ -96,6 +122,8 @@ div.sourceCode {
   background: #eee;
   margin: 2em 0;
   padding: .5em 1em;
+  overflow: scroll;
+  box-sizing: border-box;
 }
 
 div.sourceCode pre {
@@ -107,3 +135,9 @@ hr {
   margin: 2em auto;
   border-top: 1px solid #ddd;
 }
+
+.kw { font-weight: 400 }
+.dt { color: #344 }
+.st { color: #448; font-style: italic }
+.ot { color: #555 }
+.op { color: #484 }

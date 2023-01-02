@@ -31,7 +31,7 @@ main = achille A.do
 
   templates  <- loadTemplates "templates"
 
-  match_ "*.md" \src ->
+  match_ "**/*.md" \src ->
     uncurry Page <$> processPandocMeta src
       & applyTemplate (templates ! "page")
       & write (src -<.> "html")
