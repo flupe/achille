@@ -1,6 +1,6 @@
 module Main where
 
-import Prelude hiding (reverse, take, map, fail)
+import Prelude hiding (reverse, take, fail)
 import Control.Monad (unless)
 import Data.Function ((&))
 import Data.Binary (Binary(..))
@@ -13,16 +13,11 @@ import Text.Mustache.Type (PName (..))
 import GHC.Generics (Generic)
 
 import Achille as A
-import Achille.Diffable
-import Achille.Recipe (Context(..), recipe)
 import Achille.Pandoc
-import Achille.Cache
 import Achille.Stache
-import Achille.IO
-import Prelude qualified
-import Data.Aeson qualified as Aeson
-import Data.Yaml (decodeFileThrow)
+import Achille.Yaml
 
+-- TODO(flupe): move this to achille-stache?
 deriving newtype instance FromJSON PName
 deriving newtype instance ToJSON PName
 
@@ -45,26 +40,9 @@ data MenuItem = MenuItem
   , active  :: Maybe Bool
   } deriving (Eq, Generic, Binary, FromJSON, ToJSON)
 
-
--- TODO(flupe): move this to achille-yaml
-readYaml :: forall a. (FromJSON a, Binary a, Eq a) => Task IO FilePath -> Task IO a
-readYaml = apply $ recipe "readYaml" \Context{..} cache vp -> do
-  let stored :: Maybe a = fromCache cache
-      path = inputRoot </> currentDir </> theVal vp
-  exists <- doesFileExist path
-  unless exists $ Prelude.fail $ "Could not find file: " <> path
-  mtime <- getModificationTime path
-  case stored of
-    Just x | mtime <= lastTime -> pure (value False x, cache)
-    _ -> do
-      x :: a <- decodeFileThrow path
-      case stored of
-        Just y | x == y -> pure (value False x, cache)
-        _ -> pure (value True x, toCache x)
-
-
+-- The only reason we have to do this here is mustache being logic-less
 setCurrent :: FilePath -> [MenuItem] -> [MenuItem]
-setCurrent src = Prelude.map set
+setCurrent src = fmap set
   where set :: MenuItem -> MenuItem
         set item | item.source == Just src = item { active = Just True }
         set item = item

@@ -18,6 +18,7 @@ executable docs
                     , RecordWildCards
   build-depends: base
                , achille
+               , achille-yaml
                , achille-pandoc
                , achille-stache
                , aeson

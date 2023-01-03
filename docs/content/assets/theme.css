@@ -8,11 +8,14 @@ body {
   font-size: 14px;
   line-height: 1.6em;
   font-family: serif;
+  min-height: 100vh;
+  display: flex;
+  gap: 2em;
+  flex-direction: column;
 }
 
 body > header {
   background: #d0d9d5;
-  margin-bottom: 2em;
 }
 
 body > header > section {
@@ -54,6 +57,7 @@ body > header > section nav a:visited {
 
 body > section {
   display: grid;
+  flex: 1;
   padding: 0 1em;
   gap: 2em;
   grid-template-columns: 1fr minmax(min-content, var(--width)) 1fr;
@@ -82,7 +86,10 @@ body > section {
 }
 
 main {
+  /* display: flex;
+  flex-direction: column; */
   grid-column: 2;
+  min-height: 100%;
 }
 
 main > *:first-child { margin-top: 0 }
@@ -119,7 +126,8 @@ main > footer {
   margin: 2em 0 0;
   padding: 2em 0;
   border-top: 1px solid #ddd;
-  color: #333;
+  text-align: right;
+  color: #555;
 }
 
 code {background: #eee}

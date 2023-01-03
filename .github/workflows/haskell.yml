@@ -30,6 +30,7 @@ jobs:
           ghc-version: ${{ matrix.ghc }}
           cabal-version: 'latest'
       - run: cabal build achille
+      - run: cabal build achille-yaml
       - run: cabal build achille-pandoc
       - run: cabal build achille-stache
       - run: cabal build docs

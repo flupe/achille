@@ -1,0 +1,32 @@
+cabal-version:      3.8
+name:               achille-yaml
+version:            0.0.0
+synopsis:           Utilities for processing YAML files with achille
+category:           Web
+description:        Utilities for processing YAML files with achille
+
+bug-reports:        https://github.com/flupe/achille/issues
+homepage:           https://acatalepsie.fr/projects/achille
+author:             Lucas Escot <lucas@escot.me>
+maintainer:         Lucas Escot <lucas@escot.me>
+license:            MIT
+license-file:       LICENSE
+build-type:         Simple
+tested-with:        GHC == 9.4.4
+
+source-repository head
+  type:             git
+  location:         git://github.com/flupe/achille.git
+  subdir:           achille-yaml
+
+library
+  default-language: GHC2021
+  hs-source-dirs:   .
+  exposed-modules: Achille.Yaml
+  default-extensions: BlockArguments
+  build-depends: base                 >= 4.16   && < 4.18
+               , achille              >= 0.1    && < 0.2
+               , aeson                >= 2.1    && < 2.2
+               , binary               >= 0.8.9  && < 0.9
+               , filepath             >= 1.4.2  && < 1.5
+               , yaml                 >= 0.11.8 && < 0.12
