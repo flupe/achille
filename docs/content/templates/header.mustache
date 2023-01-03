@@ -4,6 +4,10 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{meta.title}}</title>
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{{meta.title}}">
+    <meta property="og:locale" content="en_US">
+    {{#meta.description}}<meta property="og:description" content="{{.}}">{{/meta.description}}
     <link rel="stylesheet" href="/assets/theme.css">
   </head>
   <body>
@@ -25,9 +29,7 @@
           <li><a href="https://hackage.haskell.org/package/achille">Reference</a></li>
           <li><a href="/releases.html">Releases</a></li>
           <li><a href="/examples.html">Examples</a></li>
+          <li><a href="/about.html">About</a></li>
         </ul>
       </nav>
       <main>
-        {{{content}}}
-        <footer>generated with <a href="/">achille</a></footer>
-      </main>

@@ -1,11 +1,6 @@
 {{> header}}
-<ul>
-  {{#posts}}
-    <li>
-      <a href="{{url}}">{{meta.title}}</a>
-    </li>
-  {{/posts}}
-</ul>
+<header>
+  <h1>{{meta.title}}</h1>
+</header>
+{{{content}}}
 {{> footer}}
-  </body>
-</html>

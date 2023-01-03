@@ -81,12 +81,12 @@ body > section {
 
 }
 
-body > section > main {
+main {
   grid-column: 2;
 }
 
-body > section > main > *:first-child { margin-top: 0 }
-body > section > main > *:last-child { margin-bottom: 0 }
+main > *:first-child { margin-top: 0 }
+main > *:last-child { margin-bottom: 0 }
 
 body > section > nav {
   text-align: right;
@@ -94,6 +94,8 @@ body > section > nav {
 }
 
 body > section > nav ul {
+  position: sticky;
+  top: 2em;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -111,6 +113,8 @@ body > section > nav a.current {
   border-bottom: 2px solid #000;
 }
 
+main > header h1 {margin: 0;}
+
 main > footer {
   margin: 2em 0 0;
   padding: 2em 0;
@@ -118,16 +122,14 @@ main > footer {
   color: #333;
 }
 
-div.sourceCode {
+code {background: #eee}
+pre {
+  line-height: 1.4;
   background: #eee;
   margin: 2em 0;
   padding: .5em 1em;
   overflow: scroll;
   box-sizing: border-box;
-}
-
-div.sourceCode pre {
-  margin: 0;
 }
 
 hr {
@@ -141,3 +143,4 @@ hr {
 .st { color: #448; font-style: italic }
 .ot { color: #555 }
 .op { color: #484 }
+.co { color: #888 }

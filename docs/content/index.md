@@ -1,28 +1,31 @@
 ---
 title: achille
+template: index
+description: |
+  achille is a Haskell EDSL for writing incremental static site generators
 ---
 
-**achille** is a Haskell EDSL for writing *incremental static site generators*.
-It enables you to write succinct, idiomatic Haskell code to describe the build process
-of your very own website. Once compiled, this code yields a *fast*, *incremental*
-and *parallel* custom site generator.
+**achille** [aʃil] is a Haskell <abbr title="Embedded Domain-Specific Language">EDSL</abbr>
+for writing *incremental static site generators*. It enables you to write
+succinct, idiomatic Haskell code to describe the build process of your very own
+website. Once compiled, this code yields a *fast*, *incremental* and *parallel*
+custom site generator.
 
+Features:
 
-The following code:
+- A **tiny** library with a straightforward implementation and very **few dependencies**.
+- **Extensible**. Custom build transformations can be implemented and provided
+  by additional libraries. You pick and choose what you want!
+- **Incremental** and **parallel** generators, without any annotation required from the user.
 
-```haskell
-import Achille as A
+*Wishful thinking, on the roadmap but not (yet) implemented:*
 
-main = achille A.do
-  match_ "assets/*" copy
-  templates <- loadTemplates "templates"
-  match_ "posts/*.md" \src -> A.do
-    meta :*: content <- processPandoc src
-    applyTemplate (templates ! "post") (Post <$> meta <*> content)
-      & write (src -<.> "index.html")
-```
-
-Compiles into a generator with a CLI:
+- **Visualization**. Your generator can dump a Graphviz representation of its
+  build graph, if you ask for it.
+- **Failure recovery**. Since the dependency graph of your build tasks is known at build time,
+  if some of them fail during generation, it will always be able to complete
+  all other tasks that are independent.
+- **Self-tracking**.
 
 ```bash
 $ site
