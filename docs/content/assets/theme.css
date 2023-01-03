@@ -154,3 +154,13 @@ abbr { cursor: help }
 .ot { color: #555 }
 .op { color: #484 }
 .co { color: #888 }
+
+.warn {
+  background: #f7de99;
+  color: #1a1712;
+  padding: .5em .8em;
+  font-size: .9em;
+  border-radius: .2em;
+  margin-bottom: 2em;
+}
+.warn p { margin: 0 }
