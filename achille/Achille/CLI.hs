@@ -32,29 +32,33 @@ import Achille.Core.Task (toProgram)
 
 -- | CLI commands.
 data AchilleCommand
-    = Build  -- ^ Build the site once.
-    | Deploy -- ^ Deploy to the server.
-    | Clean  -- ^ Delete all artefacts.
-    | Graph  -- ^ Output graph of generator.
+    = Build Bool -- ^ Build the site once.
+    | Deploy     -- ^ Deploy to the server.
+    | Clean      -- ^ Delete all artefacts.
+    | Graph      -- ^ Output graph of generator.
     deriving (Eq, Show)
 
 
 -- | CLI parser.
 achilleCLI :: Parser AchilleCommand
 achilleCLI = subparser $
-     command "build" (info (pure Build) (progDesc "Build the site"))
+     command "build"  (info (Build <$> switch (long "force" <> short 'f')) (progDesc "Build the site"))
   <> command "deploy" (info (pure Deploy) (progDesc "Deploy site"))
-  <> command "clean" (info (pure Clean) (progDesc "Delete all artefacts"))
-  <> command "graph" (info (pure Graph) (progDesc "Output graph of generator"))
+  <> command "clean"  (info (pure Clean) (progDesc "Delete all artefacts"))
+  <> command "graph"  (info (pure Graph) (progDesc "Output graph of generator"))
 
 
 -- | Run a task in some context given a configuration.
-runAchille :: (Monad m, MonadFail m, AchilleIO m) => Config -> Task m a -> m ()
-runAchille cfg@Config{..} t = do
+runAchille 
+  :: (Monad m, MonadFail m, AchilleIO m) 
+  => Config
+  -> Bool -- ^ Whether to force execution
+  -> Task m a -> m ()
+runAchille cfg@Config{..} force t = do
   -- 1. try to retrieve cache
   (cache, lastTime) <- do
     hasCache <- doesFileExist cacheFile
-    if hasCache then
+    if hasCache && not force then
       (,) <$> (Binary.decode . LBS.fromStrict <$> AIO.readFile cacheFile)
           <*> AIO.getModificationTime cacheFile
     else pure (emptyCache, defaultTime)
@@ -87,10 +91,10 @@ achille = achilleWith defaultConfig
 -- | Top-level runner and CLI for achille programs, using a custom config.
 achilleWith :: Config -> Task IO a -> IO ()
 achilleWith cfg@Config{description} t = customExecParser p opts >>= \case
-  Deploy -> putStrLn "Deploying website..."
-  Clean  -> putStrLn "Deleting all artefacts"
-  Build  -> void $ runAchille cfg t
-  Graph  -> print (toProgram t)
+  Deploy      -> putStrLn "Deploying website..."
+  Clean       -> putStrLn "Deleting all artefacts"
+  Build force -> void $ runAchille cfg force t
+  Graph       -> print (toProgram t)
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
     p    = prefs showHelpOnEmpty

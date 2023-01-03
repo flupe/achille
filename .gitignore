@@ -3,4 +3,6 @@ dist-newstyle
 *~
 result
 .cache
-**/_site
+_site
+docs.tar.gz
+SRHT_TOKEN
