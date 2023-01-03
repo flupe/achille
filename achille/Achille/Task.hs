@@ -9,7 +9,8 @@ module Achille.Task
   , -- * Operations over lists
     --
     -- $lists
-    reverse
+    map
+  , reverse
   , sort
   , sortOn
   , take
@@ -20,7 +21,8 @@ module Achille.Task
     (!)
   ) where
 
-import Prelude hiding (fst, snd, (>>), (>>=), fail, (.), reverse, take, drop)
+import Prelude
+  hiding (fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
 import Control.Applicative (Applicative(liftA2))
 import Control.Category
 import Control.Arrow (arr)
@@ -85,6 +87,9 @@ path -<.> ext = liftA2 (FilePath.-<.>) path ext
 -- Usual operations on lists, lifted to tasks returning lists.
 -- Each of them was implemented so that information change of input gets
 -- propagated and preserved.
+
+map :: Applicative m => (a -> b) -> Task m [a] -> Task m [b]
+map f = apply (Recipe.map f)
 
 -- | Sort a list using the prelude @sort@.
 reverse :: Applicative m => Task m [a] -> Task m [a]

@@ -1,8 +1,8 @@
-cabal-version:      3.0
+cabal-version:      3.8
 name:               example
 version:            0.0.0
 build-type:         Simple
-tested-with:        GHC == 9.4.2
+tested-with:        GHC == 9.4.4
 executable example
   ghc-options: -O2
   main-is:       Main.hs

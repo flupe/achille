@@ -7,7 +7,8 @@ module Achille.Recipe
   , write
   , copy
   , -- * Recipes over lists
-    reverse
+    map
+  , reverse
   , sort
   , sortOn
   , take
@@ -15,7 +16,7 @@ module Achille.Recipe
   , (!)
   ) where
 
-import Prelude hiding (reverse, take, drop)
+import Prelude hiding (reverse, take, drop, map)
 import Control.Monad (when)
 import Data.Bifunctor (bimap, first)
 import Data.List qualified as List (sortOn)
@@ -77,6 +78,13 @@ copy = recipe "copy" \Context{..} cache vsrc -> do
   when (hasChanged vsrc || time > lastTime) $
     AIO.log ("Copying " <> ipath) *> AIO.copyFile ipath opath
   pure (value (hasChanged vsrc) ("/" <> sitePrefix </> theVal vsrc), cache)
+
+-- | Map a function over a list.
+map :: Applicative m => (a -> b) -> Recipe m [a] [b]
+map f = recipe "map" \_ cache v -> pure . (, cache) $
+  case v of
+    Value xs c Nothing   -> value c (Prelude.map f xs)
+    Value xs c (Just vs) -> Value (Prelude.map f xs) c (Just (fmap f <$> vs))
 
 -- | Reverse a list.
 reverse :: Applicative m => Recipe m [a] [a]

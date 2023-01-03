@@ -1,4 +1,4 @@
-cabal-version:      3.0
+cabal-version:      3.8
 name:               achille-pandoc
 version:            0.0.0
 synopsis:           Bindings for processing markup files with Pandoc using achille
@@ -12,9 +12,7 @@ maintainer:         Lucas Escot <lucas@escot.me>
 license:            MIT
 license-file:       LICENSE
 build-type:         Simple
-tested-with:
-  , GHC == 9.2.4
-  , GHC == 9.4.2
+tested-with:        GHC == 9.4.4
 
 source-repository head
   type:             git
