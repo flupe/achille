@@ -22,7 +22,8 @@ executable docs
                , achille-stache
                , aeson
                , binary
+               , filepath
                , stache
                , text
                , time
-               , filepath
+               , yaml

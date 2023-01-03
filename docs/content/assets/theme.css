@@ -109,8 +109,8 @@ body > section > nav a {
   text-decoration: none;
 }
 
-body > section > nav a.current {
-  border-bottom: 2px solid #000;
+body > section > nav a.active {
+  border-bottom: 2px solid #d0d9d5;
 }
 
 main > header h1 {margin: 0;}
@@ -137,6 +137,8 @@ hr {
   margin: 2em auto;
   border-top: 1px solid #ddd;
 }
+
+abbr { cursor: help }
 
 .kw { font-weight: 400 }
 .dt { color: #344 }

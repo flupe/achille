@@ -24,12 +24,7 @@
     <section>
       <nav>
         <ul>
-          <li><a href="/">Home</a></li>
-          <li><a href="/docs.html">Docs</a></li>
-          <li><a href="https://hackage.haskell.org/package/achille">Reference</a></li>
-          <li><a href="/releases.html">Releases</a></li>
-          <li><a href="/examples.html">Examples</a></li>
-          <li><a href="/about.html">About</a></li>
+          {{#menu}}<li><a href="{{url}}" {{#active}}class="active"{{/active}}>{{title}}</a></li>{{/menu}}
         </ul>
       </nav>
       <main>

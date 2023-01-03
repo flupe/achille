@@ -1,0 +1,17 @@
+- title: Home
+  source: index.md
+  url: /
+- title: Docs
+  source: docs.md
+  url: /docs.html
+- title: Reference
+  url: https://hackage.haskell.org/package/achille
+- title: Releases
+  source: releases.md
+  url: /releases.html
+- title: Examples
+  source: examples.md
+  url: /examples.html
+- title: About
+  source: about.md
+  url: /about.html
