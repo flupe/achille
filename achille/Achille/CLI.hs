@@ -1,5 +1,3 @@
-{-# LANGUAGE Rank2Types, ViewPatterns, RecordWildCards, NamedFieldPuns #-}
-
 -- | CLI for achille recipes.
 module Achille.CLI 
   ( achille
@@ -11,6 +9,7 @@ import Data.Binary (encode)
 import Data.Functor (void)
 import Data.Time (UTCTime(..))
 import Options.Applicative
+import System.Directory (removePathForcibly)
 
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
@@ -20,8 +19,8 @@ import Achille.Recipe hiding (void)
 import Achille.IO (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
 
 import Data.Binary          qualified as Binary
-import Achille.IO           qualified as AIO
 import Data.ByteString.Lazy qualified as LBS
+import Achille.IO           qualified as AIO
 
 import Achille.Core.Task (toProgram)
 
@@ -90,9 +89,11 @@ achille = achilleWith defaultConfig
 
 -- | Top-level runner and CLI for achille programs, using a custom config.
 achilleWith :: Config -> Task IO a -> IO ()
-achilleWith cfg@Config{description} t = customExecParser p opts >>= \case
+achilleWith cfg@Config{..} t = customExecParser p opts >>= \case
   Deploy      -> putStrLn "Deploying website..."
   Clean       -> putStrLn "Deleting all artefacts"
+                  *> removePathForcibly cacheFile
+                  *> removePathForcibly outputDir
   Build force -> void $ runAchille cfg force t
   Graph       -> print (toProgram t)
   where
