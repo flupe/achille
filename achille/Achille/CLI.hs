@@ -23,6 +23,7 @@ import Data.ByteString.Lazy qualified as LBS
 import Achille.IO           qualified as AIO
 
 import Achille.Core.Task (toProgram)
+import Achille.Core.Recipe (Result(..))
 
 
 -- TODO(flupe): make the CLI interace extensible
@@ -72,7 +73,7 @@ runAchille cfg@Config{..} force t = do
         }
 
   -- 3. run task in context using cache
-  (_, cache') <- runTask t ctx cache
+  Result _ deps cache' <- runTask t ctx cache
 
   -- 4. write new cache to file
   AIO.writeFileLazy cacheFile $ Binary.encode cache'

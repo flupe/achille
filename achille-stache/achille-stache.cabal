@@ -28,6 +28,7 @@ library
                     , ImportQualifiedPost
                     , InstanceSigs
                     , LambdaCase
+                    , OverloadedStrings
                     , ScopedTypeVariables
                     , TupleSections
                     , TypeFamilies

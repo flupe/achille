@@ -79,7 +79,7 @@ toProgram t = Prelude.fst $! unTask t 0
 
 runTask
   :: (Monad m, MonadFail m, AchilleIO m)
-  => Task m a -> Context -> Cache -> m (Value a, Cache)
+  => Task m a -> Context -> Cache -> m (Result a)
 runTask (toProgram -> p) = runProgram p
 {-# INLINE runTask #-}
 
@@ -100,7 +100,7 @@ T x >> T y = T \n ->
 (>>=) :: Task m a -> (Task m a -> Task m b) -> Task m b
 (>>=) (T x) f = T \n ->
   let (x', vsx) = x $! n
-      (f', vsf) = unTask (f $ T \_ -> (Var n, IntSet.singleton n)) $! n + 1
+      (f', vsf) = unTask (f $ T $ const (Var n, IntSet.singleton n)) $! n + 1
   in (Bind x' f', vsx <> vsf)
 {-# INLINE (>>=) #-}
 
@@ -120,7 +120,7 @@ snd = apply Exr
 
 -- | Fail with an error message.
 fail :: String -> Task m a
-fail s = T \_ -> (Fail s, IntSet.empty)
+fail s = T $ const (Fail s, IntSet.empty)
 {-# INLINE fail #-}
 
 -- | For every path matching the Glob pattern, run the given Task and
@@ -132,7 +132,7 @@ match pat t = T \n ->
   -- remove locally-bound variables
   -- NOTE(flupe): maybe we can pospone the filtering at evaluation
   --              because maybe it gets in the way of compile-time translation
-  let (t', IntSet.filter (< n) -> vst) = unTask (t $ T \_ -> (Var n, IntSet.empty)) $! n + 1
+  let (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
   in (Match pat t' vst, vst)
 {-# INLINE match #-}
 
@@ -142,13 +142,13 @@ match pat t = T \n ->
 match_ :: Pattern -> (Task m FilePath -> Task m b) -> Task m ()
 match_ pat t = T \n ->
   -- remove locally-bound variables
-  let (t', IntSet.filter (< n) -> vst) = unTask (t $ T \_ -> (Var n, IntSet.empty)) $! n + 1
+  let (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
   in (Match_ pat t' vst, vst)
 {-# INLINE match_ #-}
 
 -- | Lift a value into a task.
 val :: Value a -> Task m a
-val !x = T \_ -> (Val x, IntSet.empty)
+val !x = T $ const (Val x, IntSet.empty)
 {-# INLINE val #-}
 
 -- | Make a Task out of a recipe applied to a Task.

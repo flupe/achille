@@ -1,18 +1,33 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Achille.Core.Recipe where
 
 import Prelude hiding ((.), id, seq, fail)
 
 import Control.Category
 import Control.Arrow
-
+import Data.Binary (Binary)
+import Data.Text (Text)
 import Data.Time (UTCTime)
+import Data.Set (Set)
+import GHC.Generics (Generic)
 import System.FilePath ((</>))
 import System.FilePath.Glob (Pattern)
+
+import Data.Set qualified as Set
 
 import Achille.Cache
 import Achille.Diffable
 import Achille.IO
 
+-- TODO(flupe): Maybe we want to make this `Map FilePath UTCTime`? (to handle failures gracefully)
+newtype FileDeps = Deps { getDeps :: Set FilePath }
+  deriving (Semigroup, Monoid, Generic, Binary)
+
+noDeps :: FileDeps
+noDeps = Deps Set.empty
+
+depends :: [FilePath] -> FileDeps
+depends = Deps . Set.fromList
 
 -- | Context in which tasks and recipes are run.
 data Context = Context
@@ -23,7 +38,17 @@ data Context = Context
   , sitePrefix :: FilePath
   }
 
+data Result b = Result
+  { output   :: Value b
+  , fileDeps :: FileDeps
+  , newCache :: Cache
+  }
+
 type PrimRecipe m a b = Context -> Cache -> Value a -> m (Value b, Cache)
+type PrimRecipeDyn m a b = Context -> Cache -> Value a -> m (Result b)
+
+toDyn :: (Value b, Cache) -> Result b
+toDyn (v, c) = Result v noDeps c
 
 -- | A recipe is a glorified Kleisli arrow, computing a value of type @b@ in some monad @m@
 --   given some input of type @a@ and a context. The recipe has access to a local cache,
@@ -36,7 +61,7 @@ data Recipe m a b where
   Exl     :: Recipe m (a, b) a
   Exr     :: Recipe m (a, b) b
   Void    :: Recipe m a ()
-  Embed   :: !String -> !(PrimRecipe m a b) -> Recipe m a b
+  Embed   :: !Text -> !(PrimRecipeDyn m a b) -> Recipe m a b
 
 instance Show (Recipe m a b) where
   show Id = "Id"
@@ -49,37 +74,37 @@ instance Show (Recipe m a b) where
   show (Embed e r) = "Embed " <> show e
 
 
-recipe :: String -> PrimRecipe m a b -> Recipe m a b
-recipe = Embed
+-- TODO(flupe): clean this up?
+recipe :: Functor m => Text -> PrimRecipe m a b -> Recipe m a b
+recipe s r = Embed s (\ctx cache v -> toDyn <$> r ctx cache v)
 {-# INLINE recipe #-}
 
-
-runRecipe :: Monad m => Recipe m a b -> PrimRecipe m a b
+runRecipe :: Monad m => Recipe m a b -> PrimRecipeDyn m a b
 runRecipe r ctx cache v = case r of
-  Id -> pure (v, cache)
+  Id -> pure $ Result v noDeps cache
 
   Comp g f -> do
     let (cf, cg) = splitCache cache
-    (y, cf) <- runRecipe f ctx cf v
-    (z, cg) <- runRecipe g ctx cg y
-    pure (z, joinCache cf cg)
+    Result y df cf <- runRecipe f ctx cf v
+    Result z dg cg <- runRecipe g ctx cg y
+    pure $ Result z (df <> dg) (joinCache cf cg)
 
   f :***: g -> do -- TODO(flupe): parallelism
     let (cf, cg) = splitCache cache
         (vx, vy) = splitValue v
-    (vz, cf) <- runRecipe f ctx cf vx
-    (vw, cg) <- runRecipe g ctx cg vy
-    pure (joinValue (vz, vw), joinCache cf cg)
+    Result vz df cf <- runRecipe f ctx cf vx
+    Result vw dg cg <- runRecipe g ctx cg vy
+    pure $ Result (joinValue (vz, vw)) (df <> dg) (joinCache cf cg)
 
   f :&&&: g -> do -- TODO(flupe): parallelism
     let (cf, cg) = splitCache cache
-    (vz, cf) <- runRecipe f ctx cf v
-    (vw, cg) <- runRecipe g ctx cg v
-    pure (joinValue (vz, vw), joinCache cf cg)
+    Result vz df cf <- runRecipe f ctx cf v
+    Result vw dg cg <- runRecipe g ctx cg v
+    pure $ Result (joinValue (vz, vw)) (df <> dg) (joinCache cf cg)
 
-  Exl  -> pure (fst $ splitValue v, cache)
-  Exr  -> pure (snd $ splitValue v, cache)
-  Void -> pure (unit, cache)
+  Exl  -> pure $ Result (fst $ splitValue v) noDeps cache
+  Exr  -> pure $ Result (snd $ splitValue v) noDeps cache
+  Void -> pure $ Result unit noDeps cache
 
   Embed n r -> r ctx cache v
 {-# INLINE runRecipe #-}
@@ -107,7 +132,7 @@ instance Category (Recipe m) where
 
 instance Applicative m => Arrow (Recipe m) where
   -- TODO(flupe): maybe make some smart constructors applying category laws
-  arr f = recipe "arr" \ctx cache v -> pure (f <$> v, cache)
+  arr f = recipe "Achille.Core.Recipe.arr" \ctx cache v -> pure (f <$> v, cache)
   {-# INLINE arr #-}
   first f = f :***: id
   {-# INLINE first #-}
@@ -117,4 +142,3 @@ instance Applicative m => Arrow (Recipe m) where
   {-# INLINE (***) #-}
   (&&&) = (:&&&:)
   {-# INLINE (&&&) #-}
-

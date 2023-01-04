@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ApplicativeDo, RecordWildCards #-}
+{-# LANGUAGE GADTs, ApplicativeDo, RecordWildCards, OverloadedStrings #-}
 module Achille.Recipe
   ( module Achille.Core.Recipe
   , readText
@@ -19,11 +19,12 @@ module Achille.Recipe
 import Prelude hiding (reverse, take, drop, map)
 import Control.Monad (when)
 import Data.Bifunctor (bimap, first)
+import Data.ByteString (ByteString)
 import Data.List qualified as List (sortOn)
 import Data.Map.Strict (Map)
+import Data.Set (Set)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8)
-import Data.ByteString (ByteString)
 import System.FilePath ((</>))
 
 import Prelude qualified
@@ -34,7 +35,6 @@ import Achille.Diffable
 import Achille.Core.Recipe (Context(..), Recipe, PrimRecipe, recipe, runRecipe)
 import Achille.Writable (Writable)
 import Achille.Writable qualified as Writable
-
 
 -- | Read text from file.
 readText :: (Applicative m, AchilleIO m) => Recipe m FilePath Text
@@ -90,6 +90,7 @@ map f = recipe "map" \_ cache v -> pure . (, cache) $
 reverse :: Applicative m => Recipe m [a] [a]
 reverse = recipe "reverse" \_ cache v -> pure (joinValue (Prelude.reverse (splitValue v)), cache)
 
+-- NOTE(flupe): change information is incorrect here. if a value changes position, then it is "new" in some sense.
 -- | Sort a list using the prelude @sort@.
 --   Crucially this takes care of tracking change information in the list.
 sort :: (Applicative m, Ord a) => Recipe m [a] [a]

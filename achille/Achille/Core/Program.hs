@@ -21,7 +21,7 @@ import System.FilePath ((</>), makeRelative)
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
-import Prelude            qualified as Prelude
+import Prelude            qualified
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet        qualified as IntSet
 import Data.Map.Strict    qualified as Map
@@ -81,7 +81,7 @@ instance Show (Program m a) where
 -- | Run a program given some context and incoming cache.
 runProgram
   :: (Monad m, MonadFail m, AchilleIO m)
-  => Program m a -> Context -> Cache -> m (Value a, Cache)
+  => Program m a -> Context -> Cache -> m (Result a)
 runProgram = runProgramIn emptyEnv
 {-# INLINE runProgram #-}
 
@@ -107,48 +107,48 @@ envChanged (Env env _) = IntSet.foldr' op False
 
 runProgramIn
   :: (Monad m, MonadFail m, AchilleIO m) 
-  => Env -> Program m a -> Context -> Cache -> m (Value a, Cache)
+  => Env -> Program m a -> Context -> Cache -> m (Result a)
 runProgramIn env t ctx@Context{..} cache = case t of
   Var k -> case lookupEnv env k of
-    Just v   -> pure (v, cache)
+    Just v   -> pure $ Result v noDeps cache
     Nothing  -> Prelude.fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
 
   Seq x y -> do
     let (cx, cy) = splitCache cache
-    (_ , cx) <- runProgramIn env x ctx cx
-    (vy, cy) <- runProgramIn env y ctx cy
-    pure (vy, joinCache cx cy)
+    Result _  dx cx <- runProgramIn env x ctx cx
+    Result vy dy cy <- runProgramIn env y ctx cy
+    pure $ Result vy (dx <> dy) (joinCache cx cy)
 
   Bind x f -> do
     let (cx, cf) = splitCache cache
-    (vx , cx) <- runProgramIn env x ctx cx
-    (vy , cf) <- runProgramIn (bindEnv env vx) f ctx cf
-    pure (vy, joinCache cx cf)
+    Result vx dx cx <- runProgramIn env x ctx cx
+    Result vy dy cf <- runProgramIn (bindEnv env vx) f ctx cf
+    pure $ Result vy (dx <> dy) (joinCache cx cf)
 
+  -- TODO(flupe): proper file deps tracking+caching
   Match pat (t :: Program m b) vars -> do
     let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
-    paths <- sort . (fmap (makeRelative inputRoot)) <$> glob (inputRoot </> currentDir) pat
-    res :: [(Value b, Cache)] <- forM paths \src -> do
+    paths <- sort . fmap (makeRelative inputRoot) <$> glob (inputRoot </> currentDir) pat
+    res :: [Result b] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
-        Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure (value False x, cache')
+        Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure $ Result (value False x) noDeps cache'
         mpast -> do
-          let cache' = fromMaybe emptyCache $ Prelude.snd <$> mpast
+          let cache' = maybe emptyCache Prelude.snd mpast
               env'   = bindEnv env (value False src)
-          (t, cache'') <- runProgramIn env' t ctx cache'
+          Result t dt cache'' <- runProgramIn env' t ctx cache'
           -- TODO(flupe): refactor this, make this pretty
-          let t' = 
+          let t' =
                 case mpast of
-                  Just r@(ot, ocache) | ot == theVal t -> (value False ot, ocache)
-                  _                                    -> (t, cache'')
+                  Just r@(ot, ocache) | ot == theVal t -> Result (value False ot) dt ocache
+                  _                                    -> Result t dt cache''
           pure t'
-    let cache' :: Map FilePath (b, Cache) =
-          Map.fromList (zip paths $ first theVal <$> res)
-    pure (joinValue (Prelude.fst <$> res), toCache cache')
+    let cache' :: Map FilePath (b, Cache) = Map.fromList (zip paths $ ((theVal . output) &&& newCache) <$> res)
+    pure $ Result (joinValue (map output res)) undefined (toCache cache')
 
   Match_ pat (t :: Program m b) vars -> do
     let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
-    paths <- sort . (fmap (makeRelative inputRoot)) <$> glob (inputRoot </> currentDir) pat
+    paths <- sort . fmap (makeRelative inputRoot) <$> glob (inputRoot </> currentDir) pat
     res :: [(FilePath, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       case stored Map.!? src of
@@ -156,24 +156,24 @@ runProgramIn env t ctx@Context{..} cache = case t of
         mpast ->
           let cache' = fromMaybe emptyCache $ mpast
               env'   = bindEnv env (value False src)
-          in (src,) . Prelude.snd <$> runProgramIn env' t ctx cache'
-    pure (unit, toCache $ Map.fromList res)
+          in (src,) . newCache <$> runProgramIn env' t ctx cache'
+    pure $ Result unit noDeps (toCache $ Map.fromList res) -- TODO(flupe): proper file deps tracking+caching
 
   Apply r x -> do
     let (cx, cr) = splitCache cache
-    (vx, cx) <- runProgramIn env x ctx cx
-    (vy, cr) <- runRecipe r ctx cr vx
-    pure (vy, joinCache cx cr)
+    Result vx dx cx <- runProgramIn env x ctx cx
+    Result vy dr cr <- runRecipe r ctx cr vx
+    pure $ Result vy (dx <> dr) (joinCache cx cr)
 
-  Pair x y -> do
+  -- TODO(flupe): does this have to be a primitive of Program? what about lists? maps?
+  Pair x y -> do -- TODO (flupe): parallelism
     let (cx, cy) = splitCache cache
-    (vx , cx) <- runProgramIn env x ctx cx
-    (vy , cy) <- runProgramIn env y ctx cy
-    pure (joinValue (vx, vy), joinCache cx cy)
+    Result vx dx cx <- runProgramIn env x ctx cx
+    Result vy dy cy <- runProgramIn env y ctx cy
+    pure $ Result (joinValue (vx, vy)) (dx <> dy) (joinCache cx cy)
 
   -- TODO(flupe): error-recovery and propagation
   Fail s -> Prelude.fail s
 
-  Val v -> pure (v, cache)
+  Val v -> pure $ Result v noDeps cache
 {-# INLINE runProgramIn #-}
-
