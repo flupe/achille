@@ -1,11 +1,12 @@
+{-# LANGUAGE DeriveAnyClass #-}
 module Achille.Core.Program where
 
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
 
-import Control.Category
-import Control.Monad (forM)
 import Control.Applicative (Alternative, empty, liftA2)
 import Control.Arrow
+import Control.Category
+import Control.Monad (forM)
 
 import Data.Binary (Binary)
 import Data.Functor ((<&>))
@@ -16,6 +17,7 @@ import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
+import GHC.Generics (Generic)
 
 import System.FilePath ((</>), makeRelative)
 import System.FilePath.Glob (Pattern)
@@ -105,29 +107,48 @@ envChanged (Env env _) = IntSet.foldr' op False
   where op :: Int -> Bool -> Bool
         op ((env IntMap.!) -> Boxed v) = (|| hasChanged v)
 
+-- some aliases for cache types
+
+-- | Cache info of primitive Match
+data CacheMatch b = CacheMatch
+  { oldValues :: Map FilePath (b, FileDeps, Cache)
+  , fileDeps  :: FileDeps
+  } deriving (Generic, Binary)
+
 runProgramIn
   :: (Monad m, MonadFail m, AchilleIO m) 
   => Env -> Program m a -> Context -> Cache -> m (Result a)
 runProgramIn env t ctx@Context{..} cache = case t of
+
   Var k -> case lookupEnv env k of
-    Just v   -> pure $ Result v noDeps cache
-    Nothing  -> Prelude.fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
+    Just v  -> pure (Result v noDeps cache)
+    Nothing -> Prelude.fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
 
-  Seq x y -> do
-    let (cx, cy) = splitCache cache
-    Result _  dx cx <- runProgramIn env x ctx cx
-    Result vy dy cy <- runProgramIn env y ctx cy
-    pure $ Result vy (dx <> dy) (joinCache cx cy)
+  Seq x y -> do let (cx, cy) = splitCache cache
+                Result _  dx cx <- runProgramIn env x ctx cx
+                Result vy dy cy <- runProgramIn env y ctx cy
+                pure $ Result vy (dx <> dy) (joinCache cx cy)
 
-  Bind x f -> do
-    let (cx, cf) = splitCache cache
-    Result vx dx cx <- runProgramIn env x ctx cx
-    Result vy dy cf <- runProgramIn (bindEnv env vx) f ctx cf
-    pure $ Result vy (dx <> dy) (joinCache cx cf)
+  Bind x f -> do let (cx, cf) = splitCache cache
+                 Result vx dx cx <- runProgramIn env x ctx cx
+                 Result vy dy cf <- runProgramIn (bindEnv env vx) f ctx cf
+                 pure $ Result vy (dx <> dy) (joinCache cx cf)
+
+  -- TODO(flupe): does this have to be a primitive of Program? what about lists? maps? this is almost identical to Seq
+  -- TODO(flupe): parallelism
+  Pair x y -> do let (cx, cy) = splitCache cache
+                 Result vx dx cx <- runProgramIn env x ctx cx
+                 Result vy dy cy <- runProgramIn env y ctx cy
+                 pure $ Result (joinValue (vx, vy)) (dx <> dy) (joinCache cx cy)
+
+  -- TODO(flupe): error-recovery and propagation
+  Fail s -> Prelude.fail s
+
+  Val v -> pure $ Result v noDeps cache
 
   -- TODO(flupe): proper file deps tracking+caching
   Match pat (t :: Program m b) vars -> do
-    let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty $ fromCache cache
+    let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty (fromCache cache)
     paths <- sort . fmap (makeRelative inputRoot) <$> glob (inputRoot </> currentDir) pat
     res :: [Result b] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
@@ -154,26 +175,13 @@ runProgramIn env t ctx@Context{..} cache = case t of
       case stored Map.!? src of
         Just cache' | mtime <= lastTime, not (envChanged env vars) -> pure (src, cache')
         mpast ->
-          let cache' = fromMaybe emptyCache $ mpast
+          let cache' = fromMaybe emptyCache mpast
               env'   = bindEnv env (value False src)
           in (src,) . newCache <$> runProgramIn env' t ctx cache'
     pure $ Result unit noDeps (toCache $ Map.fromList res) -- TODO(flupe): proper file deps tracking+caching
 
-  Apply r x -> do
-    let (cx, cr) = splitCache cache
-    Result vx dx cx <- runProgramIn env x ctx cx
-    Result vy dr cr <- runRecipe r ctx cr vx
-    pure $ Result vy (dx <> dr) (joinCache cx cr)
-
-  -- TODO(flupe): does this have to be a primitive of Program? what about lists? maps?
-  Pair x y -> do -- TODO (flupe): parallelism
-    let (cx, cy) = splitCache cache
-    Result vx dx cx <- runProgramIn env x ctx cx
-    Result vy dy cy <- runProgramIn env y ctx cy
-    pure $ Result (joinValue (vx, vy)) (dx <> dy) (joinCache cx cy)
-
-  -- TODO(flupe): error-recovery and propagation
-  Fail s -> Prelude.fail s
-
-  Val v -> pure $ Result v noDeps cache
+  Apply r x -> do let (cx, cr) = splitCache cache
+                  Result vx dx cx <- runProgramIn env x ctx cx
+                  Result vy dr cr <- runRecipe r ctx cr vx
+                  pure $ Result vy (dx <> dr) (joinCache cx cr)
 {-# INLINE runProgramIn #-}

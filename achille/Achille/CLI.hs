@@ -5,10 +5,14 @@ module Achille.CLI
   )
   where
 
+import Control.Monad (forM)
 import Data.Binary (encode)
 import Data.Functor (void)
+import Data.Map.Strict (Map)
+import Data.Maybe (catMaybes)
 import Data.Time (UTCTime(..))
 import Options.Applicative
+import System.FilePath ((</>))
 import System.Directory (removePathForcibly)
 
 import Achille.Cache
@@ -20,10 +24,12 @@ import Achille.IO (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
 
 import Data.Binary          qualified as Binary
 import Data.ByteString.Lazy qualified as LBS
+import Data.Map.Strict      qualified as Map
+import Data.Set             qualified as Set
 import Achille.IO           qualified as AIO
 
 import Achille.Core.Task (toProgram)
-import Achille.Core.Recipe (Result(..))
+import Achille.Core.Recipe (Result(..), FileDeps(..))
 
 
 -- TODO(flupe): make the CLI interace extensible
@@ -48,6 +54,9 @@ achilleCLI = subparser $
   <> command "graph"  (info (pure Graph) (progDesc "Output graph of generator"))
 
 
+-- NOTE(flupe): additional invariant: the list of file deps is already sorted
+type GlobalCache = ([FilePath], Cache)
+
 -- | Run a task in some context given a configuration.
 runAchille 
   :: (Monad m, MonadFail m, AchilleIO m) 
@@ -56,30 +65,35 @@ runAchille
   -> Task m a -> m ()
 runAchille cfg@Config{..} force t = do
   -- 1. try to retrieve cache
-  (cache, lastTime) <- do
+  ((deps, cache) :: GlobalCache, lastTime) <- do
     hasCache <- doesFileExist cacheFile
     if hasCache && not force then
       (,) <$> (Binary.decode . LBS.fromStrict <$> AIO.readFile cacheFile)
           <*> AIO.getModificationTime cacheFile
-    else pure (emptyCache, defaultTime)
+    else pure (([], emptyCache), UTCTime (toEnum 0) 0)
 
-  -- 2. create initial context
+  -- 2. retrieve mtime of all known dynamic dependencies
+  updates :: Map FilePath UTCTime <-
+    Map.fromAscList . catMaybes <$> forM deps \src -> do
+      exists <- doesFileExist src
+      if exists then Just . (src,) <$> AIO.getModificationTime src
+                else pure Nothing
+
+  -- 3. create initial context
   let ctx :: Context = Context
-        { lastTime   = lastTime
-        , currentDir = ""
-        , inputRoot  = contentDir
-        , outputRoot = outputDir
-        , sitePrefix = sitePrefix
+        { lastTime     = lastTime
+        , currentDir   = ""
+        , inputRoot    = contentDir
+        , outputRoot   = outputDir
+        , sitePrefix   = sitePrefix
+        , updatedFiles = updates
         }
 
-  -- 3. run task in context using cache
-  Result _ deps cache' <- runTask t ctx cache
+  -- 4. run task in context using cache
+  Result _ (Deps newDeps) cache' <- runTask t ctx cache
 
-  -- 4. write new cache to file
-  AIO.writeFileLazy cacheFile $ Binary.encode cache'
-
-  where defaultTime :: UTCTime
-        defaultTime = UTCTime (toEnum 0) 0
+  -- 5. write new cache to file
+  AIO.writeFileLazy cacheFile $ Binary.encode ((Set.toList newDeps, cache') :: GlobalCache)
 
 
 -- | Top-level runner for achille tasks. Provides a CLI with several commands.

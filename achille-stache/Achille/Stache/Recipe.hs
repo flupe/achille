@@ -9,7 +9,7 @@ import Prelude hiding ((.), id)
 
 import Data.Maybe (maybe, fromMaybe)
 import Control.Category
-import Control.Monad (forM)
+import Control.Monad (forM, unless)
 import Control.Arrow (arr)
 import Data.Binary (Binary)
 import Data.Aeson (ToJSON(toJSON))
@@ -35,46 +35,50 @@ deriving instance Binary Node
 deriving instance Binary Template
 
 unlessM :: Monad m => m Bool -> m () -> m ()
-unlessM b x = b >>= \b -> if b then pure () else x
+unlessM b x = b >>= \b -> unless b x
 
 -- TODO(flupe): recursively fetch (and cache) partials?
 loadTemplate :: Recipe IO FilePath Template
-loadTemplate = recipe "loadTemplate" \Context{..} cache vsrc -> do
+loadTemplate = recipeDyn "loadTemplate" \Context{..} cache vsrc -> do
   let path = inputRoot </> theVal vsrc
   unlessM (doesFileExist path) $ fail ("Could not find template file " <> path)
   mtime <- getModificationTime path
   case fromCache cache of
-    Just (t :: Template) | mtime <= lastTime, not (hasChanged vsrc) -> pure (value False t, cache)
+    Just (t :: Template) | mtime <= lastTime, not (hasChanged vsrc) ->
+      pure $ Result (value False t) (singleDep path) cache
     mc -> do
       t <- compileMustacheFile path -- TODO(flupe): handle parser exception gracefully
-      let changed = maybe False (== t) mc
-      pure (value changed t, toCache t)
+      pure $ Result (value (Just t /= mc) t)
+                    (singleDep path)
+                    (toCache t)
 
 tToNode :: Template -> [Node]
 tToNode t = templateCache t Map.! templateActual t
 
+-- TODO(flupe): transitive closure of template dependencies
 
 -- | Load all templates from the input directory.
 loadTemplates :: Recipe IO FilePath (Map PName Template)
-loadTemplates = recipe "loadTemplates" \Context{..} cache vdir -> do
+loadTemplates = recipeDyn "loadTemplates" \Context{..} cache vdir -> do
   let dir = inputRoot </> theVal vdir
   let stored :: Map PName Template = fromMaybe Map.empty (fromCache cache)
   unlessM (doesDirExist dir) $ fail ("Could not find directory " <> dir)
   files <- fmap (dir </>) . filter ((== ".mustache") . takeExtension) <$> listDir dir
   templates :: [Value Template] <- forM files \src -> do
     mtime <- getModificationTime src
-    case stored Map.!? (PName (pack $ takeBaseName src))  of
+    case stored Map.!? PName (pack $ takeBaseName src)  of
       Just (t :: Template) | mtime <= lastTime, not (hasChanged vdir) -> pure (value False t)
       mc -> do
         t <- compileMustacheFile src -- TODO(flupe): handle parser exception gracefully
-        let changed = maybe False (== t) mc
-        pure (value changed t)
+        pure (value (Just t /= mc) t)
   let
     tps :: Map PName (Value Template) =
       Map.fromList (zip (templateActual . theVal <$> templates) templates)
     tps' = tToNode . theVal <$> tps
     tps'' = (\(Value t c i) -> Value t { templateCache = tps' } c i) <$> tps
-  pure (joinValue tps'', toCache (theVal <$> tps))
+  pure $ Result (joinValue tps'')
+                (depends files)
+                (toCache (theVal <$> tps))
 
 applyTemplate :: (Applicative m, ToJSON a) => Recipe m (Template, a) Text
 applyTemplate = arr \(t, x) -> renderMustache t (toJSON x)

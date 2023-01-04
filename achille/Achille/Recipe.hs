@@ -18,6 +18,7 @@ module Achille.Recipe
 
 import Prelude hiding (reverse, take, drop, map)
 import Control.Monad (when)
+import Data.Functor (($>))
 import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
 import Data.List qualified as List (sortOn)
@@ -32,29 +33,38 @@ import Data.Map.Strict qualified as Map
 
 import Achille.IO as AIO
 import Achille.Diffable
-import Achille.Core.Recipe (Context(..), Recipe, PrimRecipe, recipe, runRecipe)
+import Achille.Core.Recipe
+  ( Context(..), Result(..), Recipe, PrimRecipe
+  , FileDeps, noDeps, singleDep, depends
+  , recipe, recipeDyn, runRecipe)
 import Achille.Writable (Writable)
 import Achille.Writable qualified as Writable
 
--- | Read text from file.
-readText :: (Applicative m, AchilleIO m) => Recipe m FilePath Text
-readText = recipe "readText" \Context{..} cache v -> do
-  let path = inputRoot </> theVal v
-  time <- getModificationTime path
-  text <- decodeUtf8 <$> AIO.readFile path
-  pure (value (time > lastTime || hasChanged v) text, cache)
+-- TODO(flupe): remove getModificationTime invocations when needed
 
 -- | Read a bytestring from file.
 readByteString :: (Applicative m, AchilleIO m) => Recipe m FilePath ByteString
-readByteString = recipe "readText" \Context{..} cache v -> do
+readByteString = recipeDyn "readText" \Context{..} cache v -> do
   let path = inputRoot </> theVal v
   time <- getModificationTime path
   text <- AIO.readFile path
-  pure (value (time > lastTime || hasChanged v) text, cache)
+  pure $ Result (value (time > lastTime || hasChanged v) text)
+                (singleDep path)
+                cache
+
+-- | Read text from file.
+readText :: (Applicative m, AchilleIO m) => Recipe m FilePath Text
+readText = recipeDyn "readText" \Context{..} cache v -> do
+  let path = inputRoot </> theVal v
+  time <- getModificationTime path
+  text <- decodeUtf8 <$> AIO.readFile path
+  pure $ Result (value (time > lastTime || hasChanged v) text)
+                (singleDep path)
+                cache
 
 -- | Print a message to stdout.
-debug :: (Applicative m, AchilleIO m) => Recipe m Text ()
-debug = recipe "debug" \ctx cache v -> AIO.log (unpack $ theVal v) *> pure (unit, cache)
+debug :: (Functor m, AchilleIO m) => Recipe m Text ()
+debug = recipe "debug" \ctx cache v -> AIO.log (unpack $ theVal v) $> (unit, cache)
 
 -- | Write something to file, /iff/ this thing has changed since the last run.
 write
@@ -69,15 +79,17 @@ write = recipe "write" \Context{..} cache v -> do
 
 -- | Copies a file to the output path, preserving its name.
 copy :: (Monad m, AchilleIO m) => Recipe m FilePath FilePath
-copy = recipe "copy" \Context{..} cache vsrc -> do
+copy = recipeDyn "copy" \Context{..} cache vsrc -> do
   let ipath = inputRoot </> theVal vsrc
-  let opath = outputRoot </> sitePrefix </> theVal vsrc
+  let opath = outputRoot </> sitePrefix </> theVal vsrc -- TODO: make this a proper URL
   -- TODO(flupe): check if file exists
   -- TODO(flupe): check if output file is there?
   time <- getModificationTime ipath
   when (hasChanged vsrc || time > lastTime) $
     AIO.log ("Copying " <> ipath) *> AIO.copyFile ipath opath
-  pure (value (hasChanged vsrc) ("/" <> sitePrefix </> theVal vsrc), cache)
+  pure $ Result (value (hasChanged vsrc) ("/" <> sitePrefix </> theVal vsrc))
+                (singleDep ipath)
+                cache
 
 -- | Map a function over a list.
 map :: Applicative m => (a -> b) -> Recipe m [a] [b]
@@ -90,7 +102,9 @@ map f = recipe "map" \_ cache v -> pure . (, cache) $
 reverse :: Applicative m => Recipe m [a] [a]
 reverse = recipe "reverse" \_ cache v -> pure (joinValue (Prelude.reverse (splitValue v)), cache)
 
--- NOTE(flupe): change information is incorrect here. if a value changes position, then it is "new" in some sense.
+-- TODO(flupe): change information is incorrect here. if a value changes position, then it is "new" in some sense.
+--              maybe we really need difflists
+
 -- | Sort a list using the prelude @sort@.
 --   Crucially this takes care of tracking change information in the list.
 sort :: (Applicative m, Ord a) => Recipe m [a] [a]

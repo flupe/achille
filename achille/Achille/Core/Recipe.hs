@@ -9,6 +9,7 @@ import Data.Binary (Binary)
 import Data.Text (Text)
 import Data.Time (UTCTime)
 import Data.Set (Set)
+import Data.Map.Strict (Map)
 import GHC.Generics (Generic)
 import System.FilePath ((</>))
 import System.FilePath.Glob (Pattern)
@@ -20,6 +21,7 @@ import Achille.Diffable
 import Achille.IO
 
 -- TODO(flupe): Maybe we want to make this `Map FilePath UTCTime`? (to handle failures gracefully)
+-- TODO(flupe): also support Glob patterns as file dependencies
 newtype FileDeps = Deps { getDeps :: Set FilePath }
   deriving (Semigroup, Monoid, Generic, Binary)
 
@@ -29,14 +31,25 @@ noDeps = Deps Set.empty
 depends :: [FilePath] -> FileDeps
 depends = Deps . Set.fromList
 
+singleDep :: FilePath -> FileDeps
+singleDep = Deps . Set.singleton
+
 -- | Context in which tasks and recipes are run.
 data Context = Context
-  { lastTime   :: UTCTime  -- ^ Time of the last run.
-  , currentDir :: FilePath -- ^ Current directory used for glob patterns
-  , inputRoot  :: FilePath
-  , outputRoot :: FilePath
-  , sitePrefix :: FilePath
+  { lastTime     :: UTCTime  -- ^ Time of the last run.
+  , currentDir   :: FilePath -- ^ Current directory used for glob patterns
+  , inputRoot    :: FilePath
+  , outputRoot   :: FilePath
+  , updatedFiles :: Map FilePath UTCTime -- ^ Files that are known to be dynamic dependencies
+                                         --   and for which we have looked up the last modification time.
+  , sitePrefix   :: FilePath
   }
+
+-- re ^ updatedFiles
+-- NOTE(flupe): should a file that doesn't exist anymore but a dynamic dependency be reported when we
+--              check all dependencies at startup? or should let the build system proceed to the place 
+--              where it's needed, and let it fail here?
+--              probably the latter
 
 data Result b = Result
   { output   :: Value b
@@ -78,6 +91,10 @@ instance Show (Recipe m a b) where
 recipe :: Functor m => Text -> PrimRecipe m a b -> Recipe m a b
 recipe s r = Embed s (\ctx cache v -> toDyn <$> r ctx cache v)
 {-# INLINE recipe #-}
+
+recipeDyn :: Functor m => Text -> PrimRecipeDyn m a b -> Recipe m a b
+recipeDyn = Embed
+{-# INLINE recipeDyn #-}
 
 runRecipe :: Monad m => Recipe m a b -> PrimRecipeDyn m a b
 runRecipe r ctx cache v = case r of
