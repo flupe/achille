@@ -36,7 +36,7 @@ import Achille.IO (AchilleIO)
 import Achille.Recipe (Recipe)
 import Achille.Writable (Writable)
 
-import Prelude           qualified as Prelude
+import Prelude           qualified
 import Data.IntSet       qualified as IntSet
 import System.FilePath   qualified as FilePath
 import Achille.Recipe    qualified as Recipe

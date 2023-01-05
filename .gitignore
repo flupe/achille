@@ -1,6 +1,7 @@
 *.local
 dist-newstyle
 *~
+*.dot
 result
 .cache
 _site
