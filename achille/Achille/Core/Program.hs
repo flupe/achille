@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DerivingStrategies #-}
 module Achille.Core.Program where
 
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
@@ -9,12 +9,14 @@ import Control.Category
 import Control.Monad (forM)
 
 import Data.Binary (Binary)
+import Data.Foldable (fold)
 import Data.Functor ((<&>))
 import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
 import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
+import Data.Monoid (All(..))
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
@@ -107,13 +109,10 @@ envChanged (Env env _) = IntSet.foldr' op False
   where op :: Int -> Bool -> Bool
         op ((env IntMap.!) -> Boxed v) = (|| hasChanged v)
 
--- some aliases for cache types
-
--- | Cache info of primitive Match
-data CacheMatch b = CacheMatch
-  { oldValues :: Map FilePath (b, FileDeps, Cache)
-  , fileDeps  :: FileDeps
-  } deriving (Generic, Binary)
+depsClean :: Map FilePath UTCTime -> UTCTime -> FileDeps -> Bool
+depsClean edits lastTime (Deps deps) = getAll $ foldMap (All . isClean) deps
+  where isClean :: FilePath -> Bool
+        isClean src = maybe False (<= lastTime) (edits Map.!? src)
 
 runProgramIn
   :: (Monad m, MonadFail m, AchilleIO m) 
@@ -134,7 +133,8 @@ runProgramIn env t ctx@Context{..} cache = case t of
                  Result vy dy cf <- runProgramIn (bindEnv env vx) f ctx cf
                  pure $ Result vy (dx <> dy) (joinCache cx cf)
 
-  -- TODO(flupe): does this have to be a primitive of Program? what about lists? maps? this is almost identical to Seq
+  -- TODO(flupe): does this have to be a primitive of Program? what about lists? maps? 
+  --              this is almost identical to Seq
   -- TODO(flupe): parallelism
   Pair x y -> do let (cx, cy) = splitCache cache
                  Result vx dx cx <- runProgramIn env x ctx cx
@@ -146,39 +146,35 @@ runProgramIn env t ctx@Context{..} cache = case t of
 
   Val v -> pure $ Result v noDeps cache
 
-  -- TODO(flupe): proper file deps tracking+caching
   Match pat (t :: Program m b) vars -> do
-    let stored :: Map FilePath (b, Cache) = fromMaybe Map.empty (fromCache cache)
+    let stored :: Map FilePath Cache = fromMaybe Map.empty (fromCache cache)
     paths <- sort . fmap (makeRelative inputRoot) <$> glob (inputRoot </> currentDir) pat
-    res :: [Result b] <- forM paths \src -> do
+    res :: [(Value b, FileDeps, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
-      case stored Map.!? src of
-        Just (x, cache') | mtime <= lastTime, not (envChanged env vars) -> pure $ Result (value False x) noDeps cache'
+      let fileCache = stored Map.!? src
+      case liftA2 (,) fileCache (fromCache =<< fileCache) :: Maybe (Cache, (b, FileDeps, Cache)) of
+        Just (cache, (x, deps, _))
+          | mtime <= lastTime
+          , not (envChanged env vars)
+          , depsClean updatedFiles lastTime deps ->
+              pure ( value False x
+                   , deps
+                   , cache
+                   )
         mpast -> do
-          let cache' = maybe emptyCache Prelude.snd mpast
-              env'   = bindEnv env (value False src)
-          Result t dt cache'' <- runProgramIn env' t ctx cache'
-          -- TODO(flupe): refactor this, make this pretty
-          let t' =
-                case mpast of
-                  Just r@(ot, ocache) | ot == theVal t -> Result (value False ot) dt ocache
-                  _                                    -> Result t dt cache''
-          pure t'
-    let cache' :: Map FilePath (b, Cache) = Map.fromList (zip paths $ ((theVal . output) &&& newCache) <$> res)
-    pure $ Result (joinValue (map output res)) undefined (toCache cache')
-
-  Match_ pat (t :: Program m b) vars -> do
-    let stored :: Map FilePath Cache = fromMaybe Map.empty $ fromCache cache
-    paths <- sort . fmap (makeRelative inputRoot) <$> glob (inputRoot </> currentDir) pat
-    res :: [(FilePath, Cache)] <- forM paths \src -> do
-      mtime <- getModificationTime (inputRoot </> src)
-      case stored Map.!? src of
-        Just cache' | mtime <= lastTime, not (envChanged env vars) -> pure (src, cache')
-        mpast ->
-          let cache' = fromMaybe emptyCache mpast
-              env'   = bindEnv env (value False src)
-          in (src,) . newCache <$> runProgramIn env' t ctx cache'
-    pure $ Result unit noDeps (toCache $ Map.fromList res) -- TODO(flupe): proper file deps tracking+caching
+          let (oldVal, cache) = case mpast of
+                Just (_, (x, _, cache)) -> (Just x, cache)
+                Nothing                 -> (Nothing, emptyCache)
+              env' = bindEnv env (value False src)
+          Result t deps cache' <- runProgramIn env' t ctx cache
+          pure ( value (Just (theVal t) == oldVal) (theVal t)
+               , deps <> singleDep (inputRoot </> src)
+               , toCache (theVal t, deps, cache')
+               )
+    let (values, deps, caches) = unzip3 res
+    pure $ Result (joinValue values)
+                  (fold deps)
+                  (toCache (Map.fromAscList (zip paths caches)))
 
   Apply r x -> do let (cx, cr) = splitCache cache
                   Result vx dx cx <- runProgramIn env x ctx cx

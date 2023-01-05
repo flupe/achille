@@ -164,3 +164,7 @@ abbr { cursor: help }
   margin-bottom: 2em;
 }
 .warn p { margin: 0 }
+
+header.hero {
+  font-size: 1.2em;
+}

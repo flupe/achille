@@ -49,15 +49,16 @@ setCurrent src = fmap set
 
 main :: IO ()
 main = achille A.do
-  match_ "assets/*" copy
+  match "assets/*" (void . copy)
 
   templates <- loadTemplates "templates"
   items :: Task IO [MenuItem] <- readYaml "menu.yml"
 
-  match_ "**/*.md" \src -> A.do
+  match "**/*.md" \src -> A.do
     meta :*: content <- processPandocMeta src
     menu <- setCurrent <$> src <*> items
     template <- templates ! (fromMaybe "page" . template <$> meta)
     (Page <$> meta <*> menu <*> content)
       & applyTemplate template
       & write (src -<.> "html")
+      & void

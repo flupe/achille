@@ -39,7 +39,7 @@ instance ToJSON PostMeta where
 
 main :: IO ()
 main = achille A.do
-  match_ "assets/*" copy
+  match "assets/*" (void . copy)
   templates <- loadTemplates "templates"
 
   posts <- match "posts/*.md" \src -> A.do

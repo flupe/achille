@@ -8,9 +8,9 @@ module Achille.Core.Task
   , snd
   , fail
   , match
-  , match_
   , apply
   , val
+  , void
   , toProgram
   ) where
 
@@ -118,6 +118,10 @@ fst = apply Exl
 snd :: Task m (a, b) -> Task m b
 snd = apply Exr
 
+void :: Task m a -> Task m ()
+void = apply Void
+
+
 -- | Fail with an error message.
 fail :: String -> Task m a
 fail s = T $ const (Fail s, IntSet.empty)
@@ -135,16 +139,6 @@ match pat t = T \n ->
   let (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
   in (Match pat t' vst, vst)
 {-# INLINE match #-}
-
--- | For every path matching the Glob pattern, run the given Task.
---   @match_@ only triggers the Task on a given path if the underlying file is
---   new or has changed since the last run.
-match_ :: Pattern -> (Task m FilePath -> Task m b) -> Task m ()
-match_ pat t = T \n ->
-  -- remove locally-bound variables
-  let (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
-  in (Match_ pat t' vst, vst)
-{-# INLINE match_ #-}
 
 -- | Lift a value into a task.
 val :: Value a -> Task m a

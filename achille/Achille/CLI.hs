@@ -98,6 +98,9 @@ runAchille cfg@Config{..} force t = do
   -- 4. run task in context using cache
   Result _ (Deps newDeps) cache' <- runTask t ctx cache
 
+  AIO.log "Reported dynamic dependencies: "
+  AIO.log $ show newDeps
+
   -- 5. write new cache to file
   AIO.log "Saving cache…"
   AIO.writeFileLazy cacheFile $ Binary.encode ((Set.toList newDeps, cache') :: GlobalCache)

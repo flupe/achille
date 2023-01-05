@@ -8,8 +8,9 @@ Below, you'll find various guides introducing several concepts behind
 
 ---
 
-1. [Getting started](/docs/getting-started.html)
-2. [Constructing build tasks](/docs/tasks.html)
+1. [Why](/docs/why.html)
+2. [Getting started](/docs/getting-started.html)
+3. [Constructing build tasks](/docs/tasks.html)
 
 ---
 
