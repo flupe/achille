@@ -168,3 +168,6 @@ abbr { cursor: help }
 header.hero {
   font-size: 1.2em;
 }
+
+dl dt {font-weight: 600;}
+dd+dt {margin-top: 1em;}
