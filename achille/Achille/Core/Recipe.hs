@@ -38,6 +38,7 @@ singleDep = Deps . Set.singleton
 data Context = Context
   { lastTime     :: UTCTime  -- ^ Time of the last run.
   , currentDir   :: FilePath -- ^ Current directory used for glob patterns
+  , cleanBuild   :: Bool     -- ^ Whether to clean build and ignore change information.
   , inputRoot    :: FilePath
   , outputRoot   :: FilePath
   , updatedFiles :: Map FilePath UTCTime -- ^ Files that are known to be dynamic dependencies

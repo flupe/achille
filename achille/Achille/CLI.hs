@@ -70,13 +70,14 @@ runAchille
   -> Task m a -> m ()
 runAchille cfg@Config{..} force t = do
   -- 1. try to retrieve cache
-  ((deps, cache) :: GlobalCache, lastTime) <- do
+  ((deps, cache), hasCache, lastTime) :: (GlobalCache, Bool, lastTime) <- do
     hasCache <- doesFileExist cacheFile
     if hasCache && not force then do
       AIO.log "Loading cache…"
-      (,) <$> (Binary.decode . LBS.fromStrict <$> AIO.readFile cacheFile)
-          <*> AIO.getModificationTime cacheFile
-    else pure (([], emptyCache), UTCTime (toEnum 0) 0)
+      (,,) <$> (Binary.decode . LBS.fromStrict <$> AIO.readFile cacheFile)
+           <*> pure True
+           <*> AIO.getModificationTime cacheFile
+    else pure (([], emptyCache), False, UTCTime (toEnum 0) 0)
 
   -- 2. retrieve mtime of all known dynamic dependencies
   updates :: Map FilePath UTCTime <-
@@ -93,6 +94,7 @@ runAchille cfg@Config{..} force t = do
         , outputRoot   = outputDir
         , sitePrefix   = sitePrefix
         , updatedFiles = updates
+        , cleanBuild   = not hasCache
         }
 
   -- 4. run task in context using cache

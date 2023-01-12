@@ -74,7 +74,7 @@ write = recipe "write" \Context{..} cache v -> do
   let (vsrc, vx) = splitValue v
   let path = outputRoot </> sitePrefix </> theVal vsrc
   -- NOTE(flupe): maybe also when the output file is no longer here
-  when (hasChanged v) $ AIO.log ("Writing " <> path) *> Writable.write path (theVal vx)
+  when (cleanBuild || hasChanged v) $ AIO.log ("Writing " <> path) *> Writable.write path (theVal vx)
   pure (value (hasChanged v) ("/" <> sitePrefix </> theVal vsrc) , cache)
 
 -- | Copies a file to the output path, preserving its name.
@@ -85,7 +85,7 @@ copy = recipeDyn "copy" \Context{..} cache vsrc -> do
   -- TODO(flupe): check if file exists
   -- TODO(flupe): check if output file is there?
   time <- getModificationTime ipath
-  when (hasChanged vsrc || time > lastTime) $
+  when (cleanBuild || hasChanged vsrc || time > lastTime) $
     AIO.log ("Copying " <> ipath) *> AIO.copyFile ipath opath
   pure $ Result (value (hasChanged vsrc) ("/" <> sitePrefix </> theVal vsrc))
                 (singleDep ipath)

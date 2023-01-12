@@ -35,3 +35,4 @@ jobs:
       - run: cabal build achille-stache
       - run: cabal build docs
       - run: cabal build example
+      - run: cabal run tests

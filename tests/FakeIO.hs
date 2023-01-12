@@ -5,7 +5,7 @@ module FakeIO where
 import Data.Bifunctor (bimap)
 import Data.Map.Strict as Map
 import Data.Maybe
-import Data.Time.Clock (UTCTime)
+import Data.Time.Clock (UTCTime(..))
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.Writer
 
@@ -68,6 +68,7 @@ data Actions
     | HasReadFile         FilePath
     | HasReadFileLazy     FilePath
     | CheckedFile         FilePath
+    | CheckedMTime        FilePath
     | CopiedFile FilePath FilePath
     | CalledCommand       String
     | Failed              String
@@ -81,7 +82,7 @@ data File = File
 type FileSystem = Map FilePath File
 
 defMTime :: UTCTime
-defMTime = undefined
+defMTime = UTCTime (toEnum 0) 0
 
 getMTime :: FilePath -> FileSystem -> UTCTime
 getMTime src = maybe defMTime mtime . Map.lookup src
@@ -106,7 +107,7 @@ retrieveActions t fs = runWriter (retrieve (fmap (theVal . output) t))
 
     retrieve (CallCommand cmd)   = Just <$> tell [CalledCommand cmd]
     retrieve (Glob dir p)        = undefined -- undefined
-    retrieve (GetModificationTime p) = pure $ Just (getMTime p fs) -- TODO: handle failure
+    retrieve (GetModificationTime p) = writer (Just (getMTime p fs), [CheckedMTime p])
 
     retrieve (SeqAp f x) = do
       f' <- retrieve f
@@ -132,7 +133,7 @@ exactRun :: (Show b, Eq b)
   -> Task FakeIO b
   -> (Maybe b, [Actions])
   -> Assertion
-exactRun fs ctx t expected =
+exactRun fs ctx t =
     let fakeIO = runTask t ctx emptyCache
         trace = retrieveActions fakeIO fs
-    in trace @?= expected
+    in (trace @?=)

@@ -28,6 +28,7 @@ testCtx = Context
   , updatedFiles = Map.empty
   , currentDir   = ""
   , sitePrefix   = ""
+  , cleanBuild   = True
   }
 
 main :: IO ()
@@ -38,20 +39,24 @@ tests = testGroup "Tests"
   [ testCase "write" $
       exactRun fs testCtx
         (write "somewhere.txt" ("somestuff" :: Task FakeIO Text))
-        (Just "/somewhere.txt", [ WrittenFile "output/somewhere.txt" "somestuff" ])
+        ( Just "/somewhere.txt"
+        , [ WrittenFile "output/somewhere.txt" "somestuff" ])
 
   , testCase "read" $
       exactRun fs testCtx
         (readText "fichier.txt")
         ( Just "helloworld"
-        , [ HasReadFile "content/fichier.txt" ]
+        , [ CheckedMTime "content/fichier.txt"
+          , HasReadFile "content/fichier.txt"
+          ]
         )
 
   , testCase "readwrite" $
       exactRun fs testCtx
         (readText "fichier.txt" >>= write "fichier.txt")
         ( Just "/fichier.txt"
-        , [ HasReadFile "content/fichier.txt"
+        , [ CheckedMTime "content/fichier.txt"
+          , HasReadFile "content/fichier.txt"
           , WrittenFile "output/fichier.txt" "helloworld"
           ]
         )
@@ -60,7 +65,7 @@ tests = testGroup "Tests"
       exactRun fs testCtx
         (copy "un.txt")
         ( Just "/un.txt"
-        , [ CopiedFile  "content/un.txt" "output/un.txt" ]
+        , [ CheckedMTime "content/un.txt", CopiedFile  "content/un.txt" "output/un.txt" ]
         )
   ]
 
