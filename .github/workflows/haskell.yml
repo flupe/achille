@@ -5,13 +5,13 @@ on:
       - 'README.md'
       - 'LICENSE'
       - '.gitignore'
-name: build
+name: build+test
 jobs:
   runhaskell:
     strategy:
       matrix:
         ghc: ['9.4.2']
-    name: Build (cabal + GHC ${{ matrix.ghc }}) Ubuntu
+    name: Build and Test (Ubuntu, GHC ${{ matrix.ghc }})
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
