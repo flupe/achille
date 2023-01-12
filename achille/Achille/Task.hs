@@ -45,6 +45,8 @@ import Achille.Recipe    qualified as Recipe
 import Achille.Writable  qualified as Writable
 
 import Achille.Core.Task
+import Achille.Path (Path)
+import Achille.Path qualified as Path
 
 import Data.Binary.Instances.Time ()
 
@@ -72,18 +74,18 @@ split p = (fst p, snd p)
 
 write
   :: (AchilleIO m, Monad m, Writable m a)
-  => Task m FilePath -> Task m a -> Task m FilePath
+  => Task m Path -> Task m a -> Task m String
 write path x = apply Recipe.write (path :*: x)
 
 copy
   :: (AchilleIO m, Monad m)
-  => Task m FilePath -> Task m FilePath
+  => Task m Path -> Task m String
 copy = apply Recipe.copy
 
-(-<.>) :: Applicative m => Task m FilePath -> Task m FilePath -> Task m FilePath
-path -<.> ext = liftA2 (FilePath.-<.>) path ext
+(-<.>) :: Applicative m => Task m Path -> Task m String -> Task m Path
+path -<.> ext = liftA2 (Path.-<.>) path ext
 
-readText :: (AchilleIO m, Applicative m) => Task m FilePath -> Task m Text
+readText :: (AchilleIO m, Applicative m) => Task m Path -> Task m Text
 readText = apply Recipe.readText
 
 

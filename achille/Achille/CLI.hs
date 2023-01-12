@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- | CLI for achille recipes.
 module Achille.CLI 
   ( achille
@@ -12,13 +13,13 @@ import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes)
 import Data.Time (UTCTime(..))
 import Options.Applicative
-import System.FilePath ((</>))
 import System.Directory (removePathForcibly)
 
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
 import Achille.Diffable (unit)
 import Achille.Dot (outputGraph)
+import Achille.Path
 import Achille.Task (Task, runTask)
 import Achille.Recipe hiding (void)
 import Achille.IO (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
@@ -60,7 +61,7 @@ achilleCLI = subparser $
 
 
 -- NOTE(flupe): additional invariant: the list of file deps is already sorted
-type GlobalCache = ([FilePath], Cache)
+type GlobalCache = ([Path], Cache)
 
 -- | Run a task in some context given a configuration.
 runAchille 
@@ -80,7 +81,7 @@ runAchille cfg@Config{..} force t = do
     else pure (([], emptyCache), False, UTCTime (toEnum 0) 0)
 
   -- 2. retrieve mtime of all known dynamic dependencies
-  updates :: Map FilePath UTCTime <-
+  updates :: Map Path UTCTime <-
     Map.fromAscList . catMaybes <$> forM deps \src -> do
       exists <- doesFileExist src
       if exists then Just . (src,) <$> AIO.getModificationTime src
@@ -120,8 +121,8 @@ achilleWith :: Config -> Task IO a -> IO ()
 achilleWith cfg@Config{..} t = customExecParser p opts >>= \case
   Deploy       -> putStrLn "Deploying website..."
   Clean        -> putStrLn "Deleting all artefacts"
-                  *> removePathForcibly cacheFile
-                  *> removePathForcibly outputDir
+                  *> removePathForcibly (toFilePath cacheFile)
+                  *> removePathForcibly (toFilePath outputDir)
   Build force  -> void $ runAchille cfg force t
   Graph output -> outputGraph output (toProgram t)
   where

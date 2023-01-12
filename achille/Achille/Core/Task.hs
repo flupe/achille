@@ -31,7 +31,6 @@ import Data.Maybe (fromMaybe)
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
 
-import System.FilePath ((</>), makeRelative)
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -42,6 +41,7 @@ import Data.Map.Strict    qualified as Map
 
 import Achille.Cache
 import Achille.Diffable
+import Achille.Path
 import Achille.IO
 
 import Achille.Core.Recipe
@@ -131,7 +131,7 @@ fail s = T $ const (Fail s, IntSet.empty)
 --   collect all results in a list.
 --   @match@ caches the list, and only triggers the Task on a given path if
 --   the underlying file is new or has changed since the last run.
-match :: (Binary b, Eq b) => Pattern -> (Task m FilePath -> Task m b) -> Task m [b]
+match :: (Binary b, Eq b) => Pattern -> (Task m Path -> Task m b) -> Task m [b]
 match pat t = T \n ->
   -- remove locally-bound variables
   -- NOTE(flupe): maybe we can pospone the filtering at evaluation

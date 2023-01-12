@@ -19,22 +19,23 @@ import Test.Tasty.HUnit
 
 import Achille.Cache (Cache, emptyCache)
 import Achille.Diffable (Value(theVal))
+import Achille.Path
 import Achille.Recipe (Context, Result(output))
 import Achille.Task (Task, runTask)
 import Achille.IO
 
 data FakeIO a where
-    ReadFile            :: FilePath -> FakeIO BS.ByteString
-    ReadFileLazy        :: FilePath -> FakeIO LBS.ByteString
-    CopyFile            :: FilePath -> FilePath       -> FakeIO ()
-    WriteFile           :: FilePath -> BS.ByteString  -> FakeIO ()
-    WriteFileLazy       :: FilePath -> LBS.ByteString -> FakeIO ()
-    DoesFileExist       :: FilePath -> FakeIO Bool
-    DoesDirExist        :: FilePath -> FakeIO Bool
-    CallCommand         :: String   -> FakeIO ()
-    Glob                :: FilePath -> Glob.Pattern -> FakeIO [FilePath]
-    GetModificationTime :: FilePath -> FakeIO UTCTime
-    Fail                :: String   -> FakeIO a
+    ReadFile            :: Path -> FakeIO BS.ByteString
+    ReadFileLazy        :: Path -> FakeIO LBS.ByteString
+    CopyFile            :: Path -> Path -> FakeIO ()
+    WriteFile           :: Path -> BS.ByteString  -> FakeIO ()
+    WriteFileLazy       :: Path -> LBS.ByteString -> FakeIO ()
+    DoesFileExist       :: Path -> FakeIO Bool
+    DoesDirExist        :: Path -> FakeIO Bool
+    CallCommand         :: String -> FakeIO ()
+    Glob                :: Path -> Glob.Pattern -> FakeIO [Path]
+    GetModificationTime :: Path -> FakeIO UTCTime
+    Fail                :: String -> FakeIO a
 
     SeqAp               :: FakeIO (a -> b) -> FakeIO a -> FakeIO b
     Fmap                :: (a -> b) -> FakeIO a -> FakeIO b
@@ -63,15 +64,15 @@ instance AchilleIO FakeIO where
 
 
 data Actions
-    = WrittenFile         FilePath BS.ByteString
-    | WrittenFileLazy     FilePath LBS.ByteString
-    | HasReadFile         FilePath
-    | HasReadFileLazy     FilePath
-    | CheckedFile         FilePath
-    | CheckedMTime        FilePath
-    | CopiedFile FilePath FilePath
-    | CalledCommand       String
-    | Failed              String
+    = WrittenFile Path BS.ByteString
+    | WrittenFileLazy Path LBS.ByteString
+    | HasReadFile Path
+    | HasReadFileLazy Path
+    | CheckedFile Path
+    | CheckedMTime Path
+    | CopiedFile Path Path
+    | CalledCommand String
+    | Failed String
     deriving (Eq, Show)
 
 data File = File
@@ -79,15 +80,15 @@ data File = File
   , contents :: BS.ByteString
   }
 
-type FileSystem = Map FilePath File
+type FileSystem = Map Path File
 
 defMTime :: UTCTime
 defMTime = UTCTime (toEnum 0) 0
 
-getMTime :: FilePath -> FileSystem -> UTCTime
+getMTime :: Path -> FileSystem -> UTCTime
 getMTime src = maybe defMTime mtime . Map.lookup src
 
-getBS :: FilePath -> FileSystem -> BS.ByteString
+getBS :: Path -> FileSystem -> BS.ByteString
 getBS src = maybe BS.empty contents . Map.lookup src
 
 retrieveActions

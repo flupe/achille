@@ -95,8 +95,6 @@ buildGraph p = case p of
   Apply r x -> do
     (bx, outx) <- buildGraph x
     (bf, outf) <- buildRecipe outx r
-    -- let b :: String = show out <> "->" <> show fbox <> ";" <> show fbox <> "[label=\"recipe\",shape=\"box\"];"
-    -- buildGraphIn nextId env t
     pure (bx <> bf, outf)
 
   Pair x y -> do
@@ -109,12 +107,6 @@ buildGraph p = case p of
                show oy <> "->" <> show out <> " [arrowhead=none];" <>
                show out <> "[shape=\"point\"];")
          , out)
-
-  Match_ pat t _ -> do
-    src     <- newNode
-    cluster <- newNode
-    (bt, ot) <- bind src $ buildGraph t
-    pure ("subgraph cluster_" <> Builder.fromString (show cluster <> " {label=\"match_\";style=filled;color=lightgrey;" <> show src <> "[label=\"src\",shape=\"plain\"];") <> bt <> "}", ot)
 
   _ -> ("",) <$> newNode
 
@@ -152,11 +144,3 @@ buildRecipe input r = case r of
     (bg, outg) <- buildRecipe outf g
     pure (bf <> bg, outg)
   _        -> pure ("", input)
-
-
-  {-
-  Match _ p _ -> let (bp, ops, nextId') = buildGraphIn (nextId + 1) (bind env nextId) p
-                 in (bp, ops, nextId')
-  Match_ _ p _ -> let (bp, _, nextId') = buildGraphIn (nextId + 1) (bind env nextId) p
-                 in (bp, 0, nextId')
-  -}

@@ -9,11 +9,11 @@ import Control.Monad (unless)
 import Data.Binary (Binary)
 import Data.Aeson (FromJSON)
 import Data.Yaml (decodeEither', prettyPrintParseException)
-import System.FilePath
 
 import Achille.IO
 import Achille.Cache
 import Achille.Diffable
+import Achille.Path
 import Achille.Recipe (Context(..), recipe, readByteString)
 import Achille.Task hiding (fail)
 
@@ -22,7 +22,7 @@ import Achille.Task hiding (fail)
 --   until the underlying file changes.
 readYaml
   :: forall m a. (AchilleIO m, MonadFail m, FromJSON a, Eq a, Binary a)
-  => Task m FilePath -> Task m a
+  => Task m Path -> Task m a
 readYaml = apply $ (id &&& readByteString)
   >>> recipe "Achille.Yaml.readYaml" \Context{..} cache v -> do
   let (vsrc, vbs) = splitValue v

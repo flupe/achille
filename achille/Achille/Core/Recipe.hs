@@ -11,39 +11,39 @@ import Data.Time (UTCTime)
 import Data.Set (Set)
 import Data.Map.Strict (Map)
 import GHC.Generics (Generic)
-import System.FilePath ((</>))
 import System.FilePath.Glob (Pattern)
 
 import Data.Set qualified as Set
 
+import Achille.Path
 import Achille.Cache
 import Achille.Diffable
 import Achille.IO
 
 -- TODO(flupe): Maybe we want to make this `Map FilePath UTCTime`? (to handle failures gracefully)
 -- TODO(flupe): also support Glob patterns as file dependencies
-newtype FileDeps = Deps { getDeps :: Set FilePath }
+newtype FileDeps = Deps { getDeps :: Set Path }
   deriving (Semigroup, Monoid, Generic, Binary)
 
 noDeps :: FileDeps
 noDeps = Deps Set.empty
 
-depends :: [FilePath] -> FileDeps
+depends :: [Path] -> FileDeps
 depends = Deps . Set.fromList
 
-singleDep :: FilePath -> FileDeps
+singleDep :: Path -> FileDeps
 singleDep = Deps . Set.singleton
 
 -- | Context in which tasks and recipes are run.
 data Context = Context
-  { lastTime     :: UTCTime  -- ^ Time of the last run.
-  , currentDir   :: FilePath -- ^ Current directory used for glob patterns
-  , cleanBuild   :: Bool     -- ^ Whether to clean build and ignore change information.
-  , inputRoot    :: FilePath
-  , outputRoot   :: FilePath
-  , updatedFiles :: Map FilePath UTCTime -- ^ Files that are known to be dynamic dependencies
+  { lastTime     :: UTCTime -- ^ Time of the last run.
+  , cleanBuild   :: Bool    -- ^ Whether to clean build and ignore change information.
+  , currentDir   :: Path    -- ^ Directory used as root for glob patterns, and literal paths.
+  , inputRoot    :: Path
+  , outputRoot   :: Path
+  , updatedFiles :: Map Path UTCTime -- ^ Files that are known to be dynamic dependencies
                                          --   and for which we have looked up the last modification time.
-  , sitePrefix   :: FilePath
+  , sitePrefix   :: String
   }
 
 -- re ^ updatedFiles

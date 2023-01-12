@@ -13,11 +13,12 @@ import Data.ByteString         qualified as BS
 import Data.ByteString.Lazy    qualified as LBS
 
 import Achille.IO as AchilleIO
+import Achille.Path
 
 
 -- | Class for things that can be saved.
 class Writable m a where
-    write :: FilePath -> a -> m ()
+    write :: Path -> a -> m ()
 
 instance AchilleIO m => Writable m [Char] where
     write to = write to . Text.pack

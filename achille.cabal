@@ -36,6 +36,7 @@ library
                  , Achille.Config
                  , Achille.Diffable
                  , Achille.IO
+                 , Achille.Path
                  , Achille.Recipe
                  , Achille.Task
                  , Achille.Writable

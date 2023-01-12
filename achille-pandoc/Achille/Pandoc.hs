@@ -14,6 +14,7 @@ import Text.Pandoc.Class (PandocMonad)
 import Achille.IO
 import Achille.Task
 import Achille.Pandoc.Recipe qualified as R
+import Achille.Path
 
 
 -- * Readers
@@ -25,25 +26,25 @@ import Achille.Pandoc.Recipe qualified as R
 -- | Read a pandoc document from path, using default reader options.
 readPandoc
   :: (MonadFail m, AchilleIO m)
-  => Task m FilePath -> Task m Pandoc
+  => Task m Path -> Task m Pandoc
 readPandoc = readPandocWith def { readerExtensions = pandocExtensions }
 
 -- | Read a pandoc document from path, using provided reader options.
 readPandocWith
   :: (MonadFail m, AchilleIO m)
-  => ReaderOptions -> Task m FilePath -> Task m Pandoc
+  => ReaderOptions -> Task m Path -> Task m Pandoc
 readPandocWith ropts src = apply (R.readPandocWith ropts) src
 
 -- | Read a pandoc document and its frontmatter metadata from path, using default reader options.
 readPandocMeta
   :: (MonadFail m, AchilleIO m, FromJSON a)
-  => Task m FilePath -> Task m (a, Pandoc)
+  => Task m Path -> Task m (a, Pandoc)
 readPandocMeta = readPandocMetaWith def
 
 -- | Read a pandoc document and its frontmatter metadata from path, using provided reader options.
 readPandocMetaWith
   :: (MonadFail m, AchilleIO m, FromJSON a)
-  => ReaderOptions -> Task m FilePath -> Task m (a, Pandoc)
+  => ReaderOptions -> Task m Path -> Task m (a, Pandoc)
 readPandocMetaWith ropts src = apply (R.readPandocMetaWith ropts) src
 
 
@@ -70,14 +71,14 @@ renderPandocWith wopts = apply (R.renderPandocWith wopts)
 
 -- | Read a pandoc document from path using default reader options,
 --   and convert to text using default writer options.
-processPandoc :: (MonadFail m, AchilleIO m) => Task m FilePath -> Task m Text
+processPandoc :: (MonadFail m, AchilleIO m) => Task m Path -> Task m Text
 processPandoc = processPandocWith def {readerExtensions = pandocExtensions} def
 
 -- | Read a pandoc document from path and convert to text,
 --   using the provided reader and writer options.
 processPandocWith
-  :: (MonadFail m, AchilleIO m) 
-  => ReaderOptions -> WriterOptions -> Task m FilePath -> Task m Text
+  :: (MonadFail m, AchilleIO m)
+  => ReaderOptions -> WriterOptions -> Task m Path -> Task m Text
 processPandocWith ropts wopts = renderPandocWith wopts . readPandocWith ropts
 
 -- | Read a pandoc document and its frontmatter metadata from path
@@ -85,7 +86,7 @@ processPandocWith ropts wopts = renderPandocWith wopts . readPandocWith ropts
 --   writer options.
 processPandocMeta
   :: (MonadFail m, AchilleIO m, FromJSON a)
-  => Task m FilePath -> Task m (a, Text)
+  => Task m Path -> Task m (a, Text)
 processPandocMeta = processPandocMetaWith def {readerExtensions = pandocExtensions} def
 
 -- | Read a pandoc document and its frontmatter metadata from path,
@@ -93,5 +94,6 @@ processPandocMeta = processPandocMetaWith def {readerExtensions = pandocExtensio
 --   options.
 processPandocMetaWith
   :: (MonadFail m, AchilleIO m, FromJSON a)
-  => ReaderOptions -> WriterOptions -> Task m FilePath -> Task m (a, Text)
-processPandocMetaWith ropts wopts src = apply ((id *** R.renderPandocWith wopts) . R.readPandocMetaWith ropts) src
+  => ReaderOptions -> WriterOptions -> Task m Path -> Task m (a, Text)
+processPandocMetaWith ropts wopts src =
+  apply ((id *** R.renderPandocWith wopts) . R.readPandocMetaWith ropts) src

@@ -16,7 +16,6 @@ import Data.Aeson (ToJSON(toJSON))
 import Data.Text (pack)
 import Data.Text.Lazy (Text)
 import Data.Map.Strict (Map)
-import System.FilePath ((</>), takeExtension, takeBaseName)
 import Text.Mustache
 import Text.Megaparsec.Pos (Pos)
 
@@ -25,6 +24,7 @@ import Data.Map.Strict qualified as Map
 import Achille.Cache
 import Achille.Diffable
 import Achille.IO
+import Achille.Path
 import Achille.Recipe
 
 -- standalone instances
@@ -38,16 +38,16 @@ unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM b x = b >>= \b -> unless b x
 
 -- TODO(flupe): recursively fetch (and cache) partials?
-loadTemplate :: Recipe IO FilePath Template
+loadTemplate :: Recipe IO Path Template
 loadTemplate = recipeDyn "loadTemplate" \Context{..} cache vsrc -> do
   let path = inputRoot </> theVal vsrc
-  unlessM (doesFileExist path) $ fail ("Could not find template file " <> path)
+  unlessM (doesFileExist path) $ fail ("Could not find template file " <> show path)
   mtime <- getModificationTime path
   case fromCache cache of
     Just (t :: Template) | mtime <= lastTime, not (hasChanged vsrc) ->
       pure $ Result (value False t) (singleDep path) cache
     mc -> do
-      t <- compileMustacheFile path -- TODO(flupe): handle parser exception gracefully
+      t <- compileMustacheFile (toFilePath path) -- TODO(flupe): handle parser exception gracefully
       pure $ Result (value (Just t /= mc) t)
                     (singleDep path)
                     (toCache t)
@@ -58,18 +58,18 @@ tToNode t = templateCache t Map.! templateActual t
 -- TODO(flupe): transitive closure of template dependencies
 
 -- | Load all templates from the input directory.
-loadTemplates :: Recipe IO FilePath (Map PName Template)
+loadTemplates :: Recipe IO Path (Map PName Template)
 loadTemplates = recipeDyn "loadTemplates" \Context{..} cache vdir -> do
   let dir = inputRoot </> theVal vdir
   let stored :: Map PName Template = fromMaybe Map.empty (fromCache cache)
-  unlessM (doesDirExist dir) $ fail ("Could not find directory " <> dir)
+  unlessM (doesDirExist dir) $ fail ("Could not find directory " <> show dir)
   files <- fmap (dir </>) . filter ((== ".mustache") . takeExtension) <$> listDir dir
   templates :: [Value Template] <- forM files \src -> do
     mtime <- getModificationTime src
     case stored Map.!? PName (pack $ takeBaseName src)  of
       Just (t :: Template) | mtime <= lastTime, not (hasChanged vdir) -> pure (value False t)
       mc -> do
-        t <- compileMustacheFile src -- TODO(flupe): handle parser exception gracefully
+        t <- compileMustacheFile (toFilePath src) -- TODO(flupe): handle parser exception gracefully
         pure (value (Just t /= mc) t)
   let
     tps :: Map PName (Value Template) =

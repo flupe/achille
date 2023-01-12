@@ -7,11 +7,11 @@ import Test.Tasty.Ingredients.ConsoleReporter
 import Test.Tasty.HUnit
 
 import FakeIO
-import System.FilePath
 import Data.Map.Strict      qualified as Map
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
 
+import Achille.Path
 import Achille.Recipe (Context(..))
 import Achille.Task
 

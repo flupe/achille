@@ -3,6 +3,7 @@ module Achille.IO (AchilleIO(..)) where
 
 import Data.Text        (Text)
 import Data.Time.Clock  (UTCTime)
+import Data.String (fromString)
 
 import Data.ByteString      qualified as BS
 import Data.ByteString.Lazy qualified as LBS
@@ -11,25 +12,27 @@ import System.FilePath      qualified as FilePath
 import System.FilePath.Glob qualified as Glob
 import System.Process       qualified as Process
 
+import Achille.Path
+
 
 -- | Interface for IO operations used by core recipes.
 class AchilleIO m where
     -- | Retrieve a file as a bytestring.
-    readFile :: FilePath -> m BS.ByteString
+    readFile :: Path -> m BS.ByteString
     -- | Retrieve a file as a /lazy/ bytestring.
-    readFileLazy :: FilePath -> m LBS.ByteString
+    readFileLazy :: Path -> m LBS.ByteString
     -- | Copy a file from one location to another.
-    copyFile :: FilePath -> FilePath       -> m ()
+    copyFile :: Path -> Path       -> m ()
     -- | Write a bytestring to a file.
-    writeFile :: FilePath -> BS.ByteString  -> m ()
+    writeFile :: Path -> BS.ByteString  -> m ()
     -- | Write a /lazy/ bytestring to a file.
-    writeFileLazy :: FilePath -> LBS.ByteString -> m ()
+    writeFileLazy :: Path -> LBS.ByteString -> m ()
     -- | Check whether a file exists.
-    doesFileExist :: FilePath -> m Bool
+    doesFileExist :: Path -> m Bool
     -- | Check whether a directory exists.
-    doesDirExist :: FilePath -> m Bool
+    doesDirExist :: Path -> m Bool
     -- | Return all entries in directory, without special entries like @.@ and @..@.
-    listDir :: FilePath -> m [FilePath]
+    listDir :: Path -> m [Path]
     -- | Run a shell command in a new process.
     callCommand :: String -> m ()
     -- | Run a shell command in a new process.
@@ -38,29 +41,28 @@ class AchilleIO m where
     log :: String -> m ()
     -- | Find all paths matching a given globpattern, relative to a given directory.
     --   All paths returned are relative to the current working directory.
-    glob :: FilePath -- ^ Path of the prefix directory
-         -> Glob.Pattern -> m [FilePath]
+    glob :: Path -- ^ Path of the prefix directory
+         -> Glob.Pattern -> m [Path]
     -- TODO(flupe): ^ really think about current working dir, absolute paths and prefixes
     -- | Get modification time of a file.
-    getModificationTime :: FilePath -> m UTCTime
+    getModificationTime :: Path -> m UTCTime
 
 
-ensureDirExists :: FilePath -> IO ()
-ensureDirExists =
-    Directory.createDirectoryIfMissing True . FilePath.takeDirectory
+ensureDirExists :: Path -> IO ()
+ensureDirExists = Directory.createDirectoryIfMissing True . toFilePath . takeDirectory
 
 
 instance AchilleIO IO where
-    readFile             = BS.readFile
-    readFileLazy         = LBS.readFile
-    copyFile from to     = ensureDirExists to *> Directory.copyFile from to
-    writeFile to x       = ensureDirExists to *> BS.writeFile to x
-    writeFileLazy to x   = ensureDirExists to *> LBS.writeFile to x
-    doesFileExist        = Directory.doesFileExist
-    doesDirExist         = Directory.doesDirectoryExist
-    listDir              = Directory.listDirectory
+    readFile             = BS.readFile . toFilePath
+    readFileLazy         = LBS.readFile . toFilePath
+    copyFile from to     = ensureDirExists to *> Directory.copyFile (toFilePath from) (toFilePath to)
+    writeFile to x       = ensureDirExists to *> BS.writeFile (toFilePath to) x
+    writeFileLazy to x   = ensureDirExists to *> LBS.writeFile (toFilePath to) x
+    doesFileExist        = Directory.doesFileExist . toFilePath
+    doesDirExist         = Directory.doesDirectoryExist . toFilePath
+    listDir              = fmap (map fromString) . Directory.listDirectory . toFilePath
     callCommand          = Process.callCommand
     readCommand cmd args = Process.readProcess cmd args []
     log                  = Prelude.putStrLn
-    glob dir pattern     = Glob.globDir1 pattern dir
-    getModificationTime  = Directory.getModificationTime
+    glob dir pattern     = map fromString <$> Glob.globDir1 pattern (toFilePath dir)
+    getModificationTime  = Directory.getModificationTime . toFilePath

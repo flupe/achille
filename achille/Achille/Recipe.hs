@@ -26,7 +26,6 @@ import Data.Map.Strict (Map)
 import Data.Set (Set)
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8)
-import System.FilePath ((</>))
 
 import Prelude qualified
 import Data.Map.Strict qualified as Map
@@ -37,13 +36,14 @@ import Achille.Core.Recipe
   ( Context(..), Result(..), Recipe, PrimRecipe
   , FileDeps, noDeps, singleDep, depends
   , recipe, recipeDyn, runRecipe)
+import Achille.Path
 import Achille.Writable (Writable)
 import Achille.Writable qualified as Writable
 
 -- TODO(flupe): remove getModificationTime invocations when needed
 
 -- | Read a bytestring from file.
-readByteString :: (Applicative m, AchilleIO m) => Recipe m FilePath ByteString
+readByteString :: (Applicative m, AchilleIO m) => Recipe m Path ByteString
 readByteString = recipeDyn "readText" \Context{..} cache v -> do
   let path = inputRoot </> theVal v
   time <- getModificationTime path
@@ -53,7 +53,7 @@ readByteString = recipeDyn "readText" \Context{..} cache v -> do
                 cache
 
 -- | Read text from file.
-readText :: (Applicative m, AchilleIO m) => Recipe m FilePath Text
+readText :: (Applicative m, AchilleIO m) => Recipe m Path Text
 readText = recipeDyn "readText" \Context{..} cache v -> do
   let path = inputRoot </> theVal v
   time <- getModificationTime path
@@ -69,25 +69,27 @@ debug = recipe "debug" \ctx cache v -> AIO.log (unpack $ theVal v) $> (unit, cac
 -- | Write something to file, /iff/ this thing has changed since the last run.
 write
   :: (Applicative m, AchilleIO m, Writable m a)
-  => Recipe m (FilePath, a) FilePath
+  => Recipe m (Path, a) String
 write = recipe "write" \Context{..} cache v -> do
   let (vsrc, vx) = splitValue v
-  let path = outputRoot </> sitePrefix </> theVal vsrc
+  let path = outputRoot </> theVal vsrc
   -- NOTE(flupe): maybe also when the output file is no longer here
-  when (cleanBuild || hasChanged v) $ AIO.log ("Writing " <> path) *> Writable.write path (theVal vx)
-  pure (value (hasChanged v) ("/" <> sitePrefix </> theVal vsrc) , cache)
+  when (cleanBuild || hasChanged v) $ AIO.log ("Writing " <> show path) *> Writable.write path (theVal vx)
+  pure (value (hasChanged v) ("/" <> sitePrefix <> toFilePath (theVal vsrc)) , cache)
+                             -- TODO(flupe): ^ make this a proper URL
 
 -- | Copies a file to the output path, preserving its name.
-copy :: (Monad m, AchilleIO m) => Recipe m FilePath FilePath
+copy :: (Monad m, AchilleIO m) => Recipe m Path String
 copy = recipeDyn "copy" \Context{..} cache vsrc -> do
   let ipath = inputRoot </> theVal vsrc
-  let opath = outputRoot </> sitePrefix </> theVal vsrc -- TODO: make this a proper URL
+  let opath = outputRoot </> theVal vsrc
   -- TODO(flupe): check if file exists
   -- TODO(flupe): check if output file is there?
   time <- getModificationTime ipath
   when (cleanBuild || hasChanged vsrc || time > lastTime) $
-    AIO.log ("Copying " <> ipath) *> AIO.copyFile ipath opath
-  pure $ Result (value (hasChanged vsrc) ("/" <> sitePrefix </> theVal vsrc))
+    AIO.log ("Copying " <> show ipath) *> AIO.copyFile ipath opath
+  pure $ Result (value (hasChanged vsrc) ("/" <> sitePrefix <> toFilePath (theVal vsrc)))
+                                         -- TODO(flupe): ^ make this a proper URL
                 (singleDep ipath)
                 cache
 

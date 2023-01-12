@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 -- | Exports a datatype for the top-level achille configuration
 module Achille.Config
     ( Config (..)
@@ -5,15 +6,15 @@ module Achille.Config
     ) where
 
 
-import System.FilePath (FilePath)
+import Achille.Path (Path)
 
 
 data Config = Config
-    { contentDir  :: FilePath -- ^ Root of the source directory.
+    { contentDir  :: Path -- ^ Root of the source directory.
                               --   Defaults to @"content"@.
-    , outputDir   :: FilePath -- ^ Root of the output directory.
+    , outputDir   :: Path -- ^ Root of the output directory.
                               --   Defaults to @"_site"@.
-    , cacheFile   :: FilePath -- ^ Path where the cache is stored.
+    , cacheFile   :: Path -- ^ Path where the cache is stored.
                               --   Defaults to @".cache"@.
     , sitePrefix  :: FilePath
     , description :: String

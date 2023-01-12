@@ -9,7 +9,6 @@ import Data.ByteString (ByteString)
 import Data.Frontmatter (IResult(..))
 import Data.Text (Text, unpack)
 import Data.Text.Encoding (decodeUtf8)
-import System.FilePath (takeExtension)
 
 import Text.Pandoc.Error (renderError)
 import Text.Pandoc.Class (PandocPure, PandocMonad, runPure)
@@ -23,6 +22,7 @@ import Data.Frontmatter qualified as Frontmatter
 
 import Achille.Diffable
 import Achille.IO
+import Achille.Path
 import Achille.Recipe
 
 -- TODO(flupe): caching/hashing of pandoc options
@@ -41,7 +41,7 @@ getReader ext = fail $ "Could not find Pandoc reader for extension " <> ext
 -- | Read a pandoc document from path, using provided reader options.
 readPandocWith
   :: (MonadFail m, Applicative m, AchilleIO m)
-  => ReaderOptions -> Recipe m FilePath Pandoc
+  => ReaderOptions -> Recipe m Path Pandoc
 readPandocWith ropts = id &&& readText >>>
   recipe "readPandoc" \ctx cache v -> do
     let (vsrc, vtxt) = splitValue v
@@ -54,7 +54,7 @@ readPandocWith ropts = id &&& readText >>>
 -- | Read a pandoc document and its frontmatter metadata from path, using provided reader options.
 readPandocMetaWith
   :: (MonadFail m, AchilleIO m, FromJSON a)
-  => ReaderOptions -> Recipe m FilePath (a, Pandoc)
+  => ReaderOptions -> Recipe m Path (a, Pandoc)
 readPandocMetaWith ropts = id &&& readByteString >>>
   recipe "readPandocMeta" \ctx cache v -> do
     let (vsrc, vbs) = splitValue v
@@ -63,11 +63,11 @@ readPandocMetaWith ropts = id &&& readByteString >>>
     case Frontmatter.parseYamlFrontmatter $ theVal vbs of
       Done rest meta ->
         case runPure (reader ropts $ decodeUtf8 rest) of
-          Left err -> fail $ theVal vsrc <> ": " <> unpack (renderError err)
+          Left err -> fail $ show (theVal vsrc) <> ": " <> unpack (renderError err)
           Right doc -> pure (value (hasChanged v) (meta, doc), cache)
       -- TODO(flupe): better error-reporting
       -- TODO(flupe): cache front-matter?
-      _ -> fail $ theVal vsrc <> ": Could not parse YAML frontmatter"
+      _ -> fail $ show (theVal vsrc) <> ": Could not parse YAML frontmatter"
 
 -- | Convert pandoc document to text, using provided writer options.
 renderPandocWith :: MonadFail m => WriterOptions -> Recipe m Pandoc Text

@@ -16,17 +16,18 @@ import Data.Aeson.Types (ToJSON)
 import Text.Mustache (Template, PName)
 
 import Achille.IO
+import Achille.Path
 import Achille.Task
 import Achille.Stache.Recipe qualified as R
 
 
 -- | Load a Mustache template from file.
 --   The template will be cached and restored as long as the file hasn't changed.
-loadTemplate :: Task IO FilePath -> Task IO Template
+loadTemplate :: Task IO Path -> Task IO Template
 loadTemplate = apply R.loadTemplate
 
 -- | Load all the templates in the given directory.
-loadTemplates :: Task IO FilePath -> Task IO (Map PName Template)
+loadTemplates :: Task IO Path -> Task IO (Map PName Template)
 loadTemplates = apply R.loadTemplates
 
 -- | Apply a Mustache template to a value.

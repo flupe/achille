@@ -21,7 +21,6 @@ import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
 
-import System.FilePath ((</>), makeRelative)
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
@@ -33,6 +32,7 @@ import Data.Map.Strict    qualified as Map
 import Achille.Cache
 import Achille.Diffable
 import Achille.IO
+import Achille.Path
 import Achille.Core.Recipe
 
 
@@ -54,11 +54,6 @@ data Program m a where
          -> IntSet
          -> Program m [b]
 
-  Match_ :: !Pattern
-         -> Program m b -- ^ has a filepath in scope
-         -> IntSet
-         -> Program m ()
-
   -- Embedding recipes
   Apply :: !(Recipe m a b) -> Program m a -> Program m b
 
@@ -75,7 +70,6 @@ instance Show (Program m a) where
     Seq x y      -> "Seq (" <> show x <> ") (" <> show y <> ")"
     Bind x f     -> "Bind (" <> show x <> ") (" <> show f <> ")"
     Match p v t  -> "Match " <> show p <> " (" <> show v <> ") (" <> show t <> ")"
-    Match_ p v t -> "Match_ " <> show p <> " (" <> show v <> ") (" <> show t <> ")"
     Apply r x    ->  "Apply (" <> show r <> ") (" <> show x <> ")"
     Pair x y     -> "Pair (" <> show x <> ") (" <> show y <> ")"
     Fail s       -> "Fail " <> show s
@@ -109,9 +103,9 @@ envChanged (Env env _) = IntSet.foldr' op False
   where op :: Int -> Bool -> Bool
         op ((env IntMap.!) -> Boxed v) = (|| hasChanged v)
 
-depsClean :: Map FilePath UTCTime -> UTCTime -> FileDeps -> Bool
+depsClean :: Map Path UTCTime -> UTCTime -> FileDeps -> Bool
 depsClean edits lastTime (Deps deps) = getAll $ foldMap (All . isClean) deps
-  where isClean :: FilePath -> Bool
+  where isClean :: Path -> Bool
         isClean src = maybe False (<= lastTime) (edits Map.!? src)
 
 runProgramIn
@@ -147,10 +141,11 @@ runProgramIn env t ctx@Context{..} cache = case t of
   Val v -> pure $ Result v noDeps cache
 
   Match pat (t :: Program m b) vars -> do
-    let stored :: Map FilePath Cache = fromMaybe Map.empty (fromCache cache)
+    let stored :: Map Path Cache = fromMaybe Map.empty (fromCache cache)
     paths <- sort . fmap (makeRelative inputRoot) <$> glob (inputRoot </> currentDir) pat
     res :: [(Value b, FileDeps, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
+      let currentDir = takeDirectory src
       let fileCache = stored Map.!? src
       case liftA2 (,) fileCache (fromCache =<< fileCache) :: Maybe (Cache, (b, FileDeps, Cache)) of
         Just (cache, (x, deps, _))
@@ -166,7 +161,7 @@ runProgramIn env t ctx@Context{..} cache = case t of
                 Just (_, (x, _, cache)) -> (Just x, cache)
                 Nothing                 -> (Nothing, emptyCache)
               env' = bindEnv env (value False src)
-          Result t deps cache' <- runProgramIn env' t ctx cache
+          Result t deps cache' <- runProgramIn env' t ctx { currentDir = currentDir } cache
           pure ( value (Just (theVal t) == oldVal) (theVal t)
                , deps <> singleDep (inputRoot </> src)
                , toCache (theVal t, deps, cache')
