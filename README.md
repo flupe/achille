@@ -1,10 +1,13 @@
 ## achille
 
-[![View on Hackage](https://img.shields.io/hackage/v/achille?style=flat-square)][hackage]
-[![Github Workflow](https://img.shields.io/github/actions/workflow/status/flupe/achille/haskell.yml?branch=master&style=flat-square)][ci]
+[![View on Hackage][hackage-shields]][hackage]
+[![Github Workflow][ci-shields]][ci]
 
 [hackage]: https://hackage.haskell.org/package/achille
+[hackage-shields]: https://img.shields.io/hackage/v/achille?style=flat-square
+
 [ci]: https://github.com/flupe/achille/actions/workflows/haskell.yml
+[ci-shields]: https://img.shields.io/github/actions/workflow/status/flupe/achille/haskell.yml?label=build%20%26%20test&style=flat-square
 
 > **Note**
 >
@@ -30,7 +33,9 @@ available [here][archives].
 
 Roadmap to release `0.1.0`:
 
-- [ ] Add back some unit tests.
+- [x] Bring back some unit testing infrastructure.
+- [x] `Path`.
+- [ ] `URL`.
 - [ ] Full dynamic dependencies (i.e not only specific files, but also
       dependencies on glob patterns).
 - [ ] Error-recovery.
@@ -42,4 +47,3 @@ Roadmap to release `0.1.0`:
 - [ ] Proper logging with verbosity.
 - [ ] Self-tracking with merkle tree.
   - [ ] Hash pandoc options.
-- [ ] `Path` and `URL`.
