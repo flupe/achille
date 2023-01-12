@@ -6,6 +6,7 @@ module Achille.Task
   , write
   , copy
   , (-<.>)
+  , readText
   , -- * Operations over lists
     --
     -- $lists
@@ -29,6 +30,7 @@ import Control.Arrow (arr)
 import Data.Binary (Binary)
 import Data.Map.Strict (Map)
 import Data.String (IsString(fromString))
+import Data.Text (Text)
 import System.FilePath.Glob (Pattern)
 
 import Achille.Diffable (Value, value)
@@ -80,6 +82,9 @@ copy = apply Recipe.copy
 
 (-<.>) :: Applicative m => Task m FilePath -> Task m FilePath -> Task m FilePath
 path -<.> ext = liftA2 (FilePath.-<.>) path ext
+
+readText :: (AchilleIO m, Applicative m) => Task m FilePath -> Task m Text
+readText = apply Recipe.readText
 
 
 -- $lists

@@ -1,65 +1,66 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Prelude hiding ((>>=))
 import Test.Tasty
 import Test.Tasty.Ingredients.ConsoleReporter
 import Test.Tasty.HUnit
 
 import FakeIO
-import Achille.Task
-import Achille.Internal
 import System.FilePath
-import qualified Data.Map.Strict      as M
-import qualified Data.ByteString.Lazy as LBS
+import Data.Map.Strict      qualified as Map
+import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
 
+import Achille.Recipe (Context(..))
+import Achille.Task
+
 fs :: FileSystem
-fs = M.fromList
-    [ ("content" </> "fichier.txt",
-          (defMTime, "helloworld"))
-    ]
+fs = Map.fromList
+  [ ("content" </> "fichier.txt", File defMTime "helloworld")
+  ]
 
 testCtx :: Context
 testCtx = Context
-    { inputDir    = "content"
-    , outputDir   = "output"
-    , currentDir  = ""
-    , timestamp   = defMTime
-    , forceFiles  = []  
-    , mustRun     = NoMust
-    , cache       = LBS.empty
-    }
+  { lastTime = defMTime
+  , inputRoot    = "content"
+  , outputRoot   = "output"
+  , updatedFiles = Map.empty
+  , currentDir   = ""
+  , sitePrefix   = ""
+  }
 
 main :: IO ()
 main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Tests"
-    [ testCase "Write on the fs and get the output path back:" $
-          exactRun fs testCtx
-            (write "somewhere.txt" ("somestuff" :: Text))
-            (Just "somewhere.txt", [ WrittenFile "output/somewhere.txt" "somestuff" ])
+  [ testCase "write" $
+      exactRun fs testCtx
+        (write "somewhere.txt" ("somestuff" :: Task FakeIO Text))
+        (Just "/somewhere.txt", [ WrittenFile "output/somewhere.txt" "somestuff" ])
 
-    , testCase "Read text from the fs" $
-          exactRun fs testCtx
-            (readText "fichier.txt")
-            ( Just "helloworld"
-            , [ HasReadFile "content/fichier.txt" ]
-            )
+  , testCase "read" $
+      exactRun fs testCtx
+        (readText "fichier.txt")
+        ( Just "helloworld"
+        , [ HasReadFile "content/fichier.txt" ]
+        )
 
-    , testCase "Read text and write it to the fs" $
-          exactRun fs testCtx
-            (readText "fichier.txt" >>= write "fichier.txt")
-            ( Just "fichier.txt"
-            , [ HasReadFile "content/fichier.txt"
-              , WrittenFile "output/fichier.txt" "helloworld"
-              ]
-            )
-    , testCase "Copy file" $
-          exactRun fs testCtx
-            (copy "un.txt" "deux.txt")
-            ( Just "deux.txt"
-            , [ CopiedFile  "content/un.txt" "output/deux.txt" ]
-            )
-    ]
+  , testCase "readwrite" $
+      exactRun fs testCtx
+        (readText "fichier.txt" >>= write "fichier.txt")
+        ( Just "/fichier.txt"
+        , [ HasReadFile "content/fichier.txt"
+          , WrittenFile "output/fichier.txt" "helloworld"
+          ]
+        )
+
+  , testCase "copy" $
+      exactRun fs testCtx
+        (copy "un.txt")
+        ( Just "/un.txt"
+        , [ CopiedFile  "content/un.txt" "output/un.txt" ]
+        )
+  ]
 
