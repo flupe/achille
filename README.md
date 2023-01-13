@@ -49,5 +49,6 @@ Roadmap to release `0.1.0`:
 - [ ] More core recipies like `runCommand`.
 - [ ] Better graph rendering (maybe stop using Graphviz).
 - [ ] Proper logging with verbosity.
+- [ ] Nicer Achille prelude.
 - [ ] Self-tracking with merkle tree.
   - [ ] Hash pandoc options.

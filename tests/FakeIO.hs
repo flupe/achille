@@ -3,7 +3,7 @@
 module FakeIO where
 
 import Data.Bifunctor (bimap)
-import Data.Map.Strict as Map
+import Data.Map.Strict (Map) 
 import Data.Maybe
 import Data.Time.Clock (UTCTime(..))
 import Control.Monad.Fail (MonadFail, fail)
@@ -14,6 +14,7 @@ import Data.ByteString.Lazy qualified as LBS
 import System.Directory     qualified as Directory
 import System.FilePath      qualified as FilePath
 import System.FilePath.Glob qualified as Glob
+import Data.Map.Strict      qualified as Map
 
 import Test.Tasty.HUnit
 
@@ -22,7 +23,13 @@ import Achille.Diffable (Value(theVal))
 import Achille.Path
 import Achille.Recipe (Context, Result(output))
 import Achille.Task (Task, runTask)
-import Achille.IO
+import Achille.IO hiding ()
+
+-- | Poor man's glob. Inefficient, but that's not the point.
+globFS :: Path -> Glob.Pattern -> FileSystem -> [Path]
+globFS root pat fs =
+  let files = Map.keys fs
+  in filter (\src -> Glob.matchWith Glob.matchDefault pat (toFilePath src)) files
 
 data FakeIO a where
     ReadFile            :: Path -> FakeIO BS.ByteString
@@ -107,7 +114,7 @@ retrieveActions t fs = runWriter (retrieve (fmap (theVal . output) t))
     retrieve (DoesFileExist p)   = writer (Just $ Map.member p fs, [CheckedFile p])
 
     retrieve (CallCommand cmd)   = Just <$> tell [CalledCommand cmd]
-    retrieve (Glob dir p)        = undefined -- undefined
+    retrieve (Glob dir p)        = pure $ Just $ globFS dir p fs -- undefined
     retrieve (GetModificationTime p) = writer (Just (getMTime p fs), [CheckedMTime p])
 
     retrieve (SeqAp f x) = do

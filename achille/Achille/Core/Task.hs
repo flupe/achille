@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Achille.Core.Task
   ( Task
   , runTask
@@ -40,7 +41,7 @@ import Data.IntSet        qualified as IntSet
 import Data.Map.Strict    qualified as Map
 
 import Achille.Cache
-import Achille.Diffable
+import Achille.Diffable as Diffable
 import Achille.Path
 import Achille.IO
 
@@ -55,7 +56,7 @@ import Achille.Core.Program
 newtype Task m a = T { unTask :: Int -> (Program m a, IntSet) }
 
 instance Applicative m => Functor (Task m) where
-  fmap f x = apply (arr f) x
+  fmap f = apply (arr f)
   {-# INLINE fmap #-}
 
 instance Applicative m => Applicative (Task m) where
@@ -68,10 +69,18 @@ instance Applicative m => Applicative (Task m) where
   liftA2 f x y = apply (arr (uncurry f)) (pair x y)
   {-# INLINE liftA2 #-}
 
-instance (Applicative m, IsString a) => IsString (Task m a) where
+instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (Task m a) where
   fromString = pure . fromString
   {-# INLINE fromString #-}
 
+instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Path) where
+  fromString p = apply rec (pure ())
+    where
+      rec :: Recipe m () Path
+      rec = recipe "Achille.Core.Task.toPath" \Context{..} cache _ -> do
+        let path :: Path = currentDir </> fromString p
+        let same = fromCache cache == Just path
+        pure (value (not same) path, toCache path)
 
 toProgram :: Task m a -> Program m a
 toProgram t = Prelude.fst $! unTask t 0
@@ -120,7 +129,6 @@ snd = apply Exr
 
 void :: Task m a -> Task m ()
 void = apply Void
-
 
 -- | Fail with an error message.
 fail :: String -> Task m a

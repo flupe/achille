@@ -5,3 +5,6 @@ packages:
   achille-stache
   docs
   example
+
+tests: True
+allow-newer: tasty-test-reporter:all

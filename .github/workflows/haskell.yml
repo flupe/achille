@@ -1,4 +1,5 @@
 on:
+  pull_request:
   push:
     branches: [ master ]
     paths-ignore:
@@ -35,4 +36,13 @@ jobs:
       - run: cabal build achille-stache
       - run: cabal build docs
       - run: cabal build example
-      - run: cabal run tests
+      - name: Run tests
+        run: cabal test --test-show-details=direct --test-options="--xml=report.xml"
+      - name: Report tests
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Tasty Tests
+          path: report.xml
+          reporter: jest-junit
+
