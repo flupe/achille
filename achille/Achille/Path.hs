@@ -8,6 +8,7 @@ module Achille.Path
   , takeBaseName
   , takeDirectory
   , makeRelative
+  , normalise
   ) where
 
 import Data.Binary
@@ -53,3 +54,6 @@ takeDirectory (Path p) = Path (FP.takeDirectory p)
 -- | Make the second path relative to the first.
 makeRelative :: Path -> Path -> Path
 makeRelative (Path a) (Path b) = Path (FP.makeRelative a b)
+
+normalise :: Path -> Path
+normalise (Path p) = Path (FP.normalise p)

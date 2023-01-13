@@ -24,10 +24,12 @@ import GHC.Generics (Generic)
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
-import Prelude            qualified
-import Data.IntMap.Strict qualified as IntMap
-import Data.IntSet        qualified as IntSet
-import Data.Map.Strict    qualified as Map
+import Prelude              qualified
+import Data.IntMap.Strict   qualified as IntMap
+import Data.IntSet          qualified as IntSet
+import Data.Map.Strict      qualified as Map
+import System.FilePath      qualified as FP
+import System.FilePath.Glob qualified as Glob
 
 import Achille.Cache
 import Achille.Diffable
@@ -141,8 +143,10 @@ runProgramIn env t ctx@Context{..} cache = case t of
   Val v -> pure $ Result v noDeps cache
 
   Match pat (t :: Program m b) vars -> do
+    let thepat = FP.normalise (toFilePath currentDir <> "/" <> Glob.decompile pat)
+    let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
     let stored :: Map Path Cache = fromMaybe Map.empty (fromCache cache)
-    paths <- sort . fmap (makeRelative inputRoot) <$> glob (inputRoot </> currentDir) pat
+    paths <- sort . fmap (normalise . makeRelative inputRoot) <$> glob inputRoot pat'
     res :: [(Value b, FileDeps, Cache)] <- forM paths \src -> do
       mtime <- getModificationTime (inputRoot </> src)
       let currentDir = takeDirectory src

@@ -1,6 +1,6 @@
-{-# LANGUAGE GADTs, ScopedTypeVariables #-}
+{-# LANGUAGE GADTs, ScopedTypeVariables, OverloadedStrings #-}
 
-module FakeIO where
+module Test.Achille.FakeIO where
 
 import Data.Bifunctor (bimap)
 import Data.Map.Strict (Map) 
@@ -28,7 +28,7 @@ import Achille.IO hiding ()
 -- | Poor man's glob. Inefficient, but that's not the point.
 globFS :: Path -> Glob.Pattern -> FileSystem -> [Path]
 globFS root pat fs =
-  let files = Map.keys fs
+  let files = map (makeRelative "content") $ Map.keys fs
   in filter (\src -> Glob.matchWith Glob.matchDefault pat (toFilePath src)) files
 
 data FakeIO a where

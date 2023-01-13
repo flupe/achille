@@ -90,7 +90,7 @@ runAchille cfg@Config{..} force t = do
   -- 3. create initial context
   let ctx :: Context = Context
         { lastTime     = lastTime
-        , currentDir   = ""
+        , currentDir   = "."
         , inputRoot    = contentDir
         , outputRoot   = outputDir
         , sitePrefix   = sitePrefix

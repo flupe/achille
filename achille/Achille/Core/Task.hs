@@ -33,6 +33,7 @@ import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
 
 import System.FilePath.Glob (Pattern)
+import System.FilePath qualified as FP
 import Unsafe.Coerce (unsafeCoerce)
 
 import Prelude            qualified as Prelude
@@ -73,14 +74,26 @@ instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (Task m a)
   fromString = pure . fromString
   {-# INLINE fromString #-}
 
+-- NOTE(flupe): Paths and Patterns are not just lifted to tasks, but also get the current
+--              directory prepended.
+
 instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Path) where
   fromString p = apply rec (pure ())
     where
       rec :: Recipe m () Path
       rec = recipe "Achille.Core.Task.toPath" \Context{..} cache _ -> do
-        let path :: Path = currentDir </> fromString p
+        let path :: Path = normalise (currentDir </> fromString p)
         let same = fromCache cache == Just path
         pure (value (not same) path, toCache path)
+
+-- instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Pattern) where
+--   fromString p = apply rec (pure ())
+--     where
+--       rec :: Recipe m () Pattern
+--       rec = recipe "Achille.Core.Task.toPath" \Context{..} cache _ -> do
+--         let path :: Pattern = fromString (toFilePath currentDir FP.</> p)
+--         pure (value False path, cache)
+
 
 toProgram :: Task m a -> Program m a
 toProgram t = Prelude.fst $! unTask t 0
