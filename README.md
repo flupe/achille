@@ -2,12 +2,16 @@
 
 [![View on Hackage][hackage-shields]][hackage]
 [![Github Workflow][ci-shields]][ci]
+[![Project license][license-shields]][license]
 
 [hackage]: https://hackage.haskell.org/package/achille
 [hackage-shields]: https://img.shields.io/hackage/v/achille?style=flat-square
 
 [ci]: https://github.com/flupe/achille/actions/workflows/haskell.yml
 [ci-shields]: https://img.shields.io/github/actions/workflow/status/flupe/achille/haskell.yml?label=build%20%26%20test&style=flat-square
+
+[license]: https://github.com/flupe/achille/blob/master/LICENSE
+[license-shields]: https://img.shields.io/github/license/flupe/achille?style=flat-square
 
 > **Note**
 >
