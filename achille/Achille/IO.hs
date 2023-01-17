@@ -39,8 +39,9 @@ class AchilleIO m where
     readCommand :: String -> [String] -> m String
     -- | Log a string to stdout.
     log :: String -> m ()
+
     -- | Find all paths matching a given globpattern, relative to a given directory.
-    --   All paths returned are relative to the current working directory.
+    --   All paths returned must be relative to the current working directory.
     glob :: Path -- ^ Path of the prefix directory
          -> Glob.Pattern -> m [Path]
     -- TODO(flupe): ^ really think about current working dir, absolute paths and prefixes

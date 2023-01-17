@@ -9,6 +9,7 @@ module Achille.CLI
 import Control.Monad (forM)
 import Data.Binary (encode)
 import Data.Functor (void)
+import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes)
 import Data.Time (UTCTime(..))
@@ -61,11 +62,11 @@ achilleCLI = subparser $
 
 
 -- NOTE(flupe): additional invariant: the list of file deps is already sorted
-type GlobalCache = ([Path], Cache)
+type GlobalCache = (FileDeps, Cache)
 
 -- | Run a task in some context given a configuration.
-runAchille 
-  :: (Monad m, MonadFail m, AchilleIO m) 
+runAchille
+  :: (Monad m, MonadFail m, AchilleIO m)
   => Config
   -> Bool -- ^ Whether to force execution
   -> Task m a -> m ()
@@ -78,14 +79,19 @@ runAchille cfg@Config{..} force t = do
       (,,) <$> (Binary.decode . LBS.fromStrict <$> AIO.readFile cacheFile)
            <*> pure True
            <*> AIO.getModificationTime cacheFile
-    else pure (([], emptyCache), False, UTCTime (toEnum 0) 0)
+    else pure ((mempty, emptyCache), False, UTCTime (toEnum 0) 0)
 
   -- 2. retrieve mtime of all known dynamic dependencies
-  updates :: Map Path UTCTime <-
-    Map.fromAscList . catMaybes <$> forM deps \src -> do
-      exists <- doesFileExist src
-      if exists then Just . (src,) <$> AIO.getModificationTime src
-                else pure Nothing
+  updates :: Map Path UTCTime <- do
+    globFiles <- nub . concat <$> forM (getGlobDeps deps) (AIO.glob contentDir)
+    globTimes <- Map.fromList <$> forM globFiles \src -> (src,) <$> AIO.getModificationTime src
+    specTimes <- Map.fromAscList . catMaybes <$>
+      forM (Set.toAscList $ getFileDeps deps) \src -> do
+        exists <- (not (Map.member src globTimes) ||) <$> doesFileExist src
+        if exists then Just . (src,) <$> AIO.getModificationTime src
+                  else pure Nothing
+
+    pure (globTimes <> specTimes)
 
   -- 3. create initial context
   let ctx :: Context = Context
@@ -99,14 +105,14 @@ runAchille cfg@Config{..} force t = do
         }
 
   -- 4. run task in context using cache
-  Result _ (Deps newDeps) cache' <- runTask t ctx cache
+  Result _ deps cache' <- runTask t ctx cache
 
   AIO.log "Reported dynamic dependencies: "
-  AIO.log $ show newDeps
+  AIO.log $ show deps
 
   -- 5. write new cache to file
   AIO.log "Saving cache…"
-  AIO.writeFileLazy cacheFile $ Binary.encode ((Set.toList newDeps, cache') :: GlobalCache)
+  AIO.writeFileLazy cacheFile $ Binary.encode ((deps, cache') :: GlobalCache)
 
   AIO.log "All done!"
 

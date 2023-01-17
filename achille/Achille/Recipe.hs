@@ -36,7 +36,7 @@ import Achille.IO as AIO
 import Achille.Diffable
 import Achille.Core.Recipe
   ( Context(..), Result(..), Recipe, PrimRecipe
-  , FileDeps, noDeps, singleDep, depends
+  , FileDeps, dependsOnPattern, dependsOnFile, dependsOnFiles
   , recipe, recipeDyn, runRecipe)
 import Achille.Path
 import Achille.Writable (Writable)
@@ -51,7 +51,7 @@ readByteString = recipeDyn "readText" \Context{..} cache v -> do
   time <- getModificationTime path
   text <- AIO.readFile path
   pure $ Result (value (time > lastTime || hasChanged v) text)
-                (singleDep path)
+                (dependsOnFile path)
                 cache
 
 -- | Read text from file.
@@ -61,7 +61,7 @@ readText = recipeDyn "readText" \Context{..} cache v -> do
   time <- getModificationTime path
   text <- decodeUtf8 <$> AIO.readFile path
   pure $ Result (value (time > lastTime || hasChanged v) text)
-                (singleDep path)
+                (dependsOnFile path)
                 cache
 
 -- | Print a message to stdout.
@@ -94,7 +94,7 @@ copy = toURL <<< recipeDyn "copy" \Context{..} cache vsrc -> do
   time <- getModificationTime ipath
   when (cleanBuild || hasChanged vsrc || time > lastTime) $
     AIO.log ("Copying " <> show ipath) *> AIO.copyFile ipath opath
-  pure $ Result vsrc (singleDep ipath) cache
+  pure $ Result vsrc (dependsOnFile ipath) cache
 
 -- | Map a function over a list.
 map :: Applicative m => (a -> b) -> Recipe m [a] [b]

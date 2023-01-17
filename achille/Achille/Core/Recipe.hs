@@ -5,7 +5,8 @@ import Prelude hiding ((.), id, seq, fail)
 
 import Control.Category
 import Control.Arrow
-import Data.Binary (Binary)
+import Data.Binary (Binary(..))
+import Data.List (nub)
 import Data.Text (Text)
 import Data.Time (UTCTime)
 import Data.Set (Set)
@@ -14,25 +15,41 @@ import GHC.Generics (Generic)
 import System.FilePath.Glob (Pattern)
 
 import Data.Set qualified as Set
+import System.FilePath.Glob qualified as Glob
 
 import Achille.Path
 import Achille.Cache
 import Achille.Diffable
 import Achille.IO
 
--- TODO(flupe): Maybe we want to make this `Map FilePath UTCTime`? (to handle failures gracefully)
--- TODO(flupe): also support Glob patterns as file dependencies
-newtype FileDeps = Deps { getDeps :: Set Path }
-  deriving (Semigroup, Monoid, Generic, Binary)
 
-noDeps :: FileDeps
-noDeps = Deps Set.empty
+data FileDeps = Deps
+  { getFileDeps :: Set Path
+    -- NOTE(flupe): ^ Maybe we want to make this `Map FilePath UTCTime`? (to handle failures gracefully)
+  , getGlobDeps :: [Pattern]
+  } deriving (Show)
 
-depends :: [Path] -> FileDeps
-depends = Deps . Set.fromList
+instance Semigroup FileDeps where
+  Deps fs1 !g1 <> Deps fs2 !g2 = Deps (fs1 <> fs2) (g1 <> g2)
 
-singleDep :: Path -> FileDeps
-singleDep = Deps . Set.singleton
+instance Monoid FileDeps where
+  mempty = Deps mempty mempty
+
+instance Binary FileDeps where
+  get = Deps <$> get <*> (fmap Glob.compile <$> get)
+  put (Deps files pat) =
+       put files
+    *> put (nub $ fmap Glob.decompile pat)
+
+dependsOnFiles :: [Path] -> FileDeps
+dependsOnFiles files = Deps (Set.fromList files) mempty
+
+dependsOnFile :: Path -> FileDeps
+dependsOnFile file = Deps (Set.singleton file) mempty
+
+dependsOnPattern :: Pattern -> FileDeps
+dependsOnPattern pat = Deps mempty [pat]
+
 
 -- | Context in which tasks and recipes are run.
 data Context = Context
@@ -62,7 +79,7 @@ type PrimRecipe m a b = Context -> Cache -> Value a -> m (Value b, Cache)
 type PrimRecipeDyn m a b = Context -> Cache -> Value a -> m (Result b)
 
 toDyn :: (Value b, Cache) -> Result b
-toDyn (v, c) = Result v noDeps c
+toDyn (v, c) = Result v mempty c
 
 -- | A recipe is a glorified Kleisli arrow, computing a value of type @b@ in some monad @m@
 --   given some input of type @a@ and a context. The recipe has access to a local cache,
@@ -99,7 +116,7 @@ recipeDyn = Embed
 
 runRecipe :: Monad m => Recipe m a b -> PrimRecipeDyn m a b
 runRecipe r ctx cache v = case r of
-  Id -> pure $ Result v noDeps cache
+  Id -> pure $ Result v mempty cache
 
   Comp g f -> do
     let (cf, cg) = splitCache cache
@@ -120,9 +137,9 @@ runRecipe r ctx cache v = case r of
     Result vw dg cg <- runRecipe g ctx cg v
     pure $ Result (joinValue (vz, vw)) (df <> dg) (joinCache cf cg)
 
-  Exl  -> pure $ Result (fst $ splitValue v) noDeps cache
-  Exr  -> pure $ Result (snd $ splitValue v) noDeps cache
-  Void -> pure $ Result unit noDeps cache
+  Exl  -> pure $ Result (fst $ splitValue v) mempty cache
+  Exr  -> pure $ Result (snd $ splitValue v) mempty cache
+  Void -> pure $ Result unit mempty cache
 
   Embed n r -> r ctx cache v
 {-# INLINE runRecipe #-}

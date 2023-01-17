@@ -45,11 +45,11 @@ loadTemplate = recipeDyn "loadTemplate" \Context{..} cache vsrc -> do
   mtime <- getModificationTime path
   case fromCache cache of
     Just (t :: Template) | mtime <= lastTime, not (hasChanged vsrc) ->
-      pure $ Result (value False t) (singleDep path) cache
+      pure $ Result (value False t) (dependsOnFile path) cache
     mc -> do
       t <- compileMustacheFile (toFilePath path) -- TODO(flupe): handle parser exception gracefully
       pure $ Result (value (Just t /= mc) t)
-                    (singleDep path)
+                    (dependsOnFile path)
                     (toCache t)
 
 tToNode :: Template -> [Node]
@@ -77,7 +77,7 @@ loadTemplates = recipeDyn "loadTemplates" \Context{..} cache vdir -> do
     tps' = tToNode . theVal <$> tps
     tps'' = (\(Value t c i) -> Value t { templateCache = tps' } c i) <$> tps
   pure $ Result (joinValue tps'')
-                (depends files)
+                (dependsOnFiles files) -- TODO(flupe): depend on glob patterns
                 (toCache (theVal <$> tps))
 
 applyTemplate :: (Applicative m, ToJSON a) => Recipe m (Template, a) Text

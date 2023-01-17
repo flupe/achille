@@ -106,7 +106,7 @@ envChanged (Env env _) = IntSet.foldr' op False
         op ((env IntMap.!) -> Boxed v) = (|| hasChanged v)
 
 depsClean :: Map Path UTCTime -> UTCTime -> FileDeps -> Bool
-depsClean edits lastTime (Deps deps) = getAll $ foldMap (All . isClean) deps
+depsClean edits lastTime (Deps fdeps gdeps) = getAll $ foldMap (All . isClean) fdeps
   where isClean :: Path -> Bool
         isClean src = maybe False (<= lastTime) (edits Map.!? src)
 
@@ -116,7 +116,7 @@ runProgramIn
 runProgramIn env t ctx@Context{..} cache = case t of
 
   Var k -> case lookupEnv env k of
-    Just v  -> pure (Result v noDeps cache)
+    Just v  -> pure (Result v mempty cache)
     Nothing -> Prelude.fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
 
   Seq x y -> do let (cx, cy) = splitCache cache
@@ -140,7 +140,7 @@ runProgramIn env t ctx@Context{..} cache = case t of
   -- TODO(flupe): error-recovery and propagation
   Fail s -> Prelude.fail s
 
-  Val v -> pure $ Result v noDeps cache
+  Val v -> pure $ Result v mempty cache
 
   Match pat (t :: Program m b) vars -> do
     let thepat = FP.normalise (toFilePath currentDir <> "/" <> Glob.decompile pat)
@@ -165,14 +165,19 @@ runProgramIn env t ctx@Context{..} cache = case t of
                 Just (_, (x, _, cache)) -> (Just x, cache)
                 Nothing                 -> (Nothing, emptyCache)
               env' = bindEnv env (value False src)
-          Result t deps cache' <- runProgramIn env' t ctx { currentDir = currentDir } cache
+          Result t deps cache' <-
+            runProgramIn env' t
+              ctx { currentDir   = currentDir
+                  , updatedFiles = Map.insert src mtime updatedFiles
+                  }
+              cache
           pure ( value (Just (theVal t) == oldVal) (theVal t)
-               , deps <> singleDep (inputRoot </> src)
+               , deps
                , toCache (theVal t, deps, cache')
                )
     let (values, deps, caches) = unzip3 res
     pure $ Result (joinValue values)
-                  (fold deps)
+                  (fold deps <> dependsOnPattern pat) -- TODO(flupe): take care of nesting for pattern
                   (toCache (Map.fromAscList (zip paths caches)))
 
   Apply r x -> do let (cx, cr) = splitCache cache
