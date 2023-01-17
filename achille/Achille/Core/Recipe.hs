@@ -43,7 +43,7 @@ data Context = Context
   , outputRoot   :: Path
   , updatedFiles :: Map Path UTCTime -- ^ Files that are known to be dynamic dependencies
                                          --   and for which we have looked up the last modification time.
-  , sitePrefix   :: String
+  , sitePrefix   :: Text
   }
 
 -- re ^ updatedFiles

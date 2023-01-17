@@ -19,16 +19,18 @@ data PostMeta = PostMeta
   } deriving (Eq, Generic, FromJSON, Binary)
 
 data Post = Post
-  { meta :: PostMeta, content :: Text } 
-  deriving (Generic, ToJSON)
+  { meta    :: PostMeta
+  , content :: Text
+  } deriving (Generic, ToJSON)
 
-data Index = Index
+newtype Index = Index
   { posts :: [PostItem] }
-  deriving (Generic, ToJSON)
+  deriving newtype ToJSON
 
 data PostItem = PostItem
-  { url :: FilePath, meta :: PostMeta }
-  deriving (Eq, Generic, Binary, ToJSON)
+  { url  :: Text
+  , meta :: PostMeta 
+  } deriving (Eq, Generic, Binary, ToJSON)
 
 instance ToJSON PostMeta where
   toJSON (PostMeta t d tags) = object 

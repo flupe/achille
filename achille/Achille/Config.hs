@@ -6,6 +6,7 @@ module Achille.Config
     ) where
 
 
+import Data.Text (Text)
 import Achille.Path (Path)
 
 
@@ -16,7 +17,7 @@ data Config = Config
                               --   Defaults to @"_site"@.
     , cacheFile   :: Path -- ^ Path where the cache is stored.
                               --   Defaults to @".cache"@.
-    , sitePrefix  :: FilePath
+    , sitePrefix  :: Text
     , description :: String
     }
 

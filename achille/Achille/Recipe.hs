@@ -4,6 +4,7 @@ module Achille.Recipe
   , readText
   , readByteString
   , debug
+  , toURL
   , write
   , copy
   , -- * Recipes over lists
@@ -18,13 +19,14 @@ module Achille.Recipe
 
 import Prelude hiding (reverse, take, drop, map)
 import Control.Monad (when)
+import Control.Arrow
 import Data.Functor (($>))
 import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
 import Data.List qualified as List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Set (Set)
-import Data.Text (Text, unpack)
+import Data.Text (Text, unpack, pack)
 import Data.Text.Encoding (decodeUtf8)
 
 import Prelude qualified
@@ -66,21 +68,25 @@ readText = recipeDyn "readText" \Context{..} cache v -> do
 debug :: (Functor m, AchilleIO m) => Recipe m Text ()
 debug = recipe "debug" \ctx cache v -> AIO.log (unpack $ theVal v) $> (unit, cache)
 
+-- | Convert a path to a proper absolute URL, including the site prefix.
+toURL :: Applicative m => Recipe m Path Text
+toURL = recipe "Achille.Recipe.toURL" \Context{sitePrefix} cache v ->
+  pure (value (hasChanged v) ("/" <> sitePrefix <> pack (toFilePath (theVal v))), cache)
+
 -- | Write something to file, /iff/ this thing has changed since the last run.
 write
   :: (Applicative m, AchilleIO m, Writable m a)
-  => Recipe m (Path, a) String
-write = recipe "write" \Context{..} cache v -> do
+  => Recipe m (Path, a) Text
+write = toURL <<< recipe "write" \Context{..} cache v -> do
   let (vsrc, vx) = splitValue v
   let path = outputRoot </> theVal vsrc
   -- NOTE(flupe): maybe also when the output file is no longer here
   when (cleanBuild || hasChanged v) $ AIO.log ("Writing " <> show path) *> Writable.write path (theVal vx)
-  pure (value (hasChanged v) ("/" <> sitePrefix <> toFilePath (theVal vsrc)) , cache)
-                             -- TODO(flupe): ^ make this a proper URL
+  pure (vsrc, cache)
 
 -- | Copies a file to the output path, preserving its name.
-copy :: (Monad m, AchilleIO m) => Recipe m Path String
-copy = recipeDyn "copy" \Context{..} cache vsrc -> do
+copy :: (Monad m, AchilleIO m) => Recipe m Path Text
+copy = toURL <<< recipeDyn "copy" \Context{..} cache vsrc -> do
   let ipath = inputRoot </> theVal vsrc
   let opath = outputRoot </> theVal vsrc
   -- TODO(flupe): check if file exists
@@ -88,10 +94,7 @@ copy = recipeDyn "copy" \Context{..} cache vsrc -> do
   time <- getModificationTime ipath
   when (cleanBuild || hasChanged vsrc || time > lastTime) $
     AIO.log ("Copying " <> show ipath) *> AIO.copyFile ipath opath
-  pure $ Result (value (hasChanged vsrc) ("/" <> sitePrefix <> toFilePath (theVal vsrc)))
-                                         -- TODO(flupe): ^ make this a proper URL
-                (singleDep ipath)
-                cache
+  pure $ Result vsrc (singleDep ipath) cache
 
 -- | Map a function over a list.
 map :: Applicative m => (a -> b) -> Recipe m [a] [b]

@@ -3,6 +3,7 @@
 module Achille.Task 
   ( module Achille.Core.Task
   , pattern (:*:)
+  , toURL
   , write
   , copy
   , (-<.>)
@@ -72,14 +73,17 @@ pattern (:*:) x y <- (split -> (x, y))
 split :: Task m (a, b) -> (Task m a, Task m b)
 split p = (fst p, snd p)
 
+toURL :: Applicative m => Task m Path -> Task m Text
+toURL = apply Recipe.toURL
+
 write
   :: (AchilleIO m, Monad m, Writable m a)
-  => Task m Path -> Task m a -> Task m String
+  => Task m Path -> Task m a -> Task m Text
 write path x = apply Recipe.write (path :*: x)
 
 copy
   :: (AchilleIO m, Monad m)
-  => Task m Path -> Task m String
+  => Task m Path -> Task m Text
 copy = apply Recipe.copy
 
 (-<.>) :: Applicative m => Task m Path -> Task m String -> Task m Path
