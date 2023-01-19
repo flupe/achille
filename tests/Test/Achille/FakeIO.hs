@@ -2,11 +2,12 @@
 
 module Test.Achille.FakeIO where
 
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first)
 import Data.Functor ((<&>))
 import Data.Map.Strict (Map)
 import Data.Maybe
 import Data.Time.Clock (UTCTime(..))
+import Control.Monad (join)
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.Writer
 
@@ -144,6 +145,6 @@ exactRun :: (Show b, Eq b)
   -> (Maybe b, [Actions])
   -> Assertion
 exactRun fs ctx t =
-    let fakeIO = runTask t ctx emptyCache <&> \(v, x, y) -> theVal v
+    let fakeIO = runTask t ctx emptyCache <&> \(v, x, y) -> v
         trace = retrieveActions fakeIO fs
-    in (trace @?=)
+    in (first (fmap theVal . join) trace @?=)

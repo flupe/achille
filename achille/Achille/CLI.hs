@@ -34,7 +34,7 @@ import Achille.IO           qualified as AIO
 import Achille.Core.Task (toProgram)
 import Achille.Context (Context(..))
 import Achille.DynDeps
-import Achille.Result (Result)
+import Achille.Result
 import Achille.Core.Recipe
 
 
@@ -106,7 +106,7 @@ runAchille cfg@Config{..} force t = do
         }
 
   -- 4. run task in context using cache
-  (_, deps, cache') <- runTask t ctx cache
+  (_, cache', deps) <- runTask t ctx cache
 
   AIO.log "Reported dynamic dependencies: "
   AIO.log $ show deps

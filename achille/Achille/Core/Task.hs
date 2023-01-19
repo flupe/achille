@@ -62,11 +62,11 @@ import Achille.Context qualified as Ctx
 -- | Core abstraction for build tasks.
 newtype Task m a = T { unTask :: Int -> (Program m a, IntSet) }
 
-instance Applicative m => Functor (Task m) where
+instance Monad m => Functor (Task m) where
   fmap f = apply (arr f)
   {-# INLINE fmap #-}
 
-instance Applicative m => Applicative (Task m) where
+instance Monad m => Applicative (Task m) where
   -- NOTE(flupe): values lifted with @pure@ are considered to always be old.
   --              maybe we want to make them always new, but a choice has to be made.
   --              over or under approximating incrementality.
@@ -76,7 +76,7 @@ instance Applicative m => Applicative (Task m) where
   liftA2 f x y = apply (arr (uncurry f)) (pair x y)
   {-# INLINE liftA2 #-}
 
-instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (Task m a) where
+instance {-# OVERLAPPABLE #-} (Monad m, IsString a) => IsString (Task m a) where
   fromString = pure . fromString
   {-# INLINE fromString #-}
 
@@ -87,11 +87,12 @@ instance {-# OVERLAPPING #-} Monad m => IsString (Task m Path) where
   fromString p = apply rec (pure ())
     where
       rec :: Recipe m () Path
-      rec = recipe "Achille.Core.Task.toPath" \cache _ -> do
+      rec = recipe "Achille.Core.Task.toPath" \_ -> do
         curr <- reader Ctx.currentDir
         let path :: Path = normalise (curr </> fromString p)
-        let same = fromCache cache == Just path
-        pure (value (not same) path, toCache path)
+        same <- (Just path ==) . fromCache <$> getCache
+        putCache (toCache path)
+        pure (value (not same) path)
 
 -- instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Pattern) where
 --   fromString p = apply rec (pure ())
@@ -108,10 +109,8 @@ toProgram t = Prelude.fst $! unTask t 0
 
 runTask
   :: (Monad m, MonadFail m, AchilleIO m)
-  => Task m a -> Context -> Cache -> m (Value a, DynDeps, Cache)
-runTask (toProgram -> p) ctx cache = do
-  ((v, c), deps) <- runResult (runProgram p cache) ctx
-  pure (v, deps, c)
+  => Task m a -> Context -> Cache -> m (Maybe (Value a), Cache, DynDeps)
+runTask (toProgram -> p) = runPrimTask (runProgram p)
 {-# INLINE runTask #-}
 
 -- | Sequence two tasks, ignoring the result of the first.

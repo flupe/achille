@@ -24,7 +24,7 @@ import Achille.IO
 import Achille.Result
 
 
-type PrimRecipe m a b = Cache -> Value a -> Result m (Value b, Cache)
+type PrimRecipe m a b = Value a -> PrimTask m (Value b)
 
 -- | A recipe is a glorified Kleisli arrow, computing a value of type @b@ in some monad @m@
 --   given some input of type @a@ and a context. The recipe has access to a local cache,
@@ -57,35 +57,42 @@ recipe = Embed
 
 
 runRecipe :: Monad m => Recipe m a b -> PrimRecipe m a b
-runRecipe r cache x = case r of
-  Id -> pure (x, cache)
+runRecipe r x = case r of
+  Id -> pure x
 
   Comp g f -> do
-    let (cf, cg) = splitCache cache
-    (y, cf) <- runRecipe f cf x
-    (z, cg) <- runRecipe g cg y
-    pure (z, joinCache cf cg)
+    (cf, cg) <- splitCache <$> getCache
+    (y, cf) <- withCache cf $ runRecipe f x
+    case y of
+      Nothing -> putCache (joinCache cf cg) *> silentFail
+      Just y  -> do
+        (z, cg) <- withCache cg $ runRecipe g y
+        putCache (joinCache cf cg)
+        forward z
 
   f :***: g -> do -- TODO(flupe): parallelism
-    let (cf, cg) = splitCache cache
-        (a, b) = splitValue x
-    (a, cf) <- runRecipe f cf a
-    (b, cg) <- runRecipe g cg b
-    pure (joinValue (a, b), joinCache cf cg)
+    let (a, b) = splitValue x
+    (cf, cg) <- splitCache <$> getCache
+    (a, cf) <- withCache cf $ runRecipe f a
+    (b, cg) <- withCache cg $ runRecipe g b
+    putCache (joinCache cf cg)
+    forward $ joinValue <$> ((,) <$> a <*> b)
 
   f :&&&: g -> do -- TODO(flupe): parallelism
-    let (cf, cg) = splitCache cache
-    (a, cf) <- runRecipe f cf x
-    (b, cg) <- runRecipe g cg x
-    pure (joinValue (a, b), joinCache cf cg)
+    (cf, cg) <- splitCache <$> getCache
+    (a, cf) <- withCache cf $ runRecipe f x
+    (b, cg) <- withCache cg $ runRecipe g x
+    putCache (joinCache cf cg)
+    forward $ joinValue <$> ((,) <$> a <*> b)
 
-  Exl  -> pure (fst (splitValue x), cache)
-  Exr  -> pure (snd (splitValue x), cache)
-  Void -> pure (unit, cache)
+  Exl  -> pure $ fst (splitValue x)
+  Exr  -> pure $ snd (splitValue x)
+  Void -> pure unit
 
-  Embed n r -> r cache x
+  Embed n r -> r x
+
+
 {-# INLINE runRecipe #-}
-
 
 instance Category (Recipe m) where
   id = Id
@@ -107,9 +114,9 @@ instance Category (Recipe m) where
   {-# INLINE (.) #-}
 
 
-instance Applicative m => Arrow (Recipe m) where
+instance Monad m => Arrow (Recipe m) where
   -- TODO(flupe): maybe make some smart constructors applying category laws
-  arr f = recipe "Achille.Core.Recipe.arr" \cache x -> pure (f <$> x, cache)
+  arr f = recipe "Achille.Core.Recipe.arr" (pure . fmap f)
   {-# INLINE arr #-}
   first f = f :***: id
   {-# INLINE first #-}
