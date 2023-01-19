@@ -27,18 +27,18 @@ readYaml
   :: forall m a. (AchilleIO m, MonadFail m, FromJSON a, Eq a, Binary a)
   => Task m Path -> Task m a
 readYaml = apply $ (id &&& readByteString)
-  >>> recipe "Achille.Yaml.readYaml" \cache v -> do
+  >>> recipe "Achille.Yaml.readYaml" \v -> do
   Context{..} <- getContext
   let Config{..} = siteConfig
   let (vsrc, vbs) = splitValue v
-  let stored :: Maybe a = fromCache cache
-      path = contentDir </> currentDir </> theVal vsrc
+  stored :: Maybe a <- fromCache <$> getCache
+  let path = contentDir </> currentDir </> theVal vsrc
   mtime <- getModificationTime path
   case stored of
-    Just x | mtime <= lastTime -> pure (value False x, cache)
+    Just x | mtime <= lastTime -> pure (value False x)
     _ -> do
       case decodeEither' (theVal vbs) of
         Left err -> fail $ prettyPrintParseException err
         Right x -> case stored of
-          Just y | x == y -> pure (value False x, cache)
-          _               -> pure (value True x, toCache x)
+          Just y | x == y -> pure (value False x)
+          _               -> putCache (toCache x) *> pure (value True x)

@@ -55,11 +55,11 @@ readPandocMetaWith ropts src = apply (R.readPandocMetaWith ropts) src
 -- Some recipes to render pandoc documents to HTML.
 
 -- | Convert pandoc document to text, using default writer options.
-renderPandoc :: MonadFail m => Task m Pandoc -> Task m Text
+renderPandoc :: (AchilleIO m, MonadFail m) => Task m Pandoc -> Task m Text
 renderPandoc = renderPandocWith def
 
 -- | Convert pandoc document to text, using provided writer options.
-renderPandocWith :: MonadFail m => WriterOptions -> Task m Pandoc -> Task m Text
+renderPandocWith :: (AchilleIO m, MonadFail m) => WriterOptions -> Task m Pandoc -> Task m Text
 renderPandocWith wopts = apply (R.renderPandocWith wopts)
 
 

@@ -1,16 +1,21 @@
 {-# LANGUAGE DerivingStrategies #-}
-module Achille.Result where
---  ( Result
---  , runResult
---  , setDeps
---  , getContext
---  , getConfig
---  , lift
---  , contentDir
---  , outputDir
---  , updatedFiles
---  , lastTime
---  ) where
+module Achille.Result
+  ( PrimTask
+  , runPrimTask
+  , setDeps
+  , getContext
+  , getConfig
+  , lift
+  , silentFail
+  , forward
+  , withCache
+  , getCache
+  , putCache
+  , contentDir
+  , outputDir
+  , updatedFiles
+  , lastTime
+  ) where
 
 import Data.Map.Strict (Map)
 import Data.Function ((&))
