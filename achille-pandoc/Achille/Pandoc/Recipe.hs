@@ -24,6 +24,7 @@ import Achille.Diffable
 import Achille.IO
 import Achille.Path
 import Achille.Recipe
+import Achille.Result
 
 -- TODO(flupe): caching/hashing of pandoc options
 
@@ -40,10 +41,10 @@ getReader ext = fail $ "Could not find Pandoc reader for extension " <> ext
 
 -- | Read a pandoc document from path, using provided reader options.
 readPandocWith
-  :: (MonadFail m, Applicative m, AchilleIO m)
+  :: (MonadFail m, AchilleIO m)
   => ReaderOptions -> Recipe m Path Pandoc
 readPandocWith ropts = id &&& readText >>>
-  recipe "readPandoc" \ctx cache v -> do
+  recipe "readPandoc" \cache v -> do
     let (vsrc, vtxt) = splitValue v
     let ext = takeExtension $ theVal vsrc
     reader <- getReader ext
@@ -56,7 +57,7 @@ readPandocMetaWith
   :: (MonadFail m, AchilleIO m, FromJSON a)
   => ReaderOptions -> Recipe m Path (a, Pandoc)
 readPandocMetaWith ropts = id &&& readByteString >>>
-  recipe "readPandocMeta" \ctx cache v -> do
+  recipe "readPandocMeta" \cache v -> do
     let (vsrc, vbs) = splitValue v
         ext = takeExtension $ theVal vsrc
     reader <- getReader ext
@@ -71,7 +72,7 @@ readPandocMetaWith ropts = id &&& readByteString >>>
 
 -- | Convert pandoc document to text, using provided writer options.
 renderPandocWith :: MonadFail m => WriterOptions -> Recipe m Pandoc Text
-renderPandocWith wopts = recipe "renderPandoc" \ctx cache vdoc -> do
+renderPandocWith wopts = recipe "renderPandoc" \cache vdoc -> do
   case runPure (writeHtml5String wopts $ theVal vdoc) of
-    Left err   -> fail $ unpack $ renderError $ err
+    Left err   -> fail $ unpack $ renderError err
     Right html -> pure (value (hasChanged vdoc) html, cache)

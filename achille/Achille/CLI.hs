@@ -32,7 +32,10 @@ import Data.Set             qualified as Set
 import Achille.IO           qualified as AIO
 
 import Achille.Core.Task (toProgram)
-import Achille.Core.Recipe (Result(..), FileDeps(..))
+import Achille.Context (Context(..))
+import Achille.DynDeps
+import Achille.Result (Result)
+import Achille.Core.Recipe
 
 
 -- TODO(flupe): make the CLI interace extensible
@@ -62,7 +65,7 @@ achilleCLI = subparser $
 
 
 -- NOTE(flupe): additional invariant: the list of file deps is already sorted
-type GlobalCache = (FileDeps, Cache)
+type GlobalCache = (DynDeps, Cache)
 
 -- | Run a task in some context given a configuration.
 runAchille
@@ -97,15 +100,13 @@ runAchille cfg@Config{..} force t = do
   let ctx :: Context = Context
         { lastTime     = lastTime
         , currentDir   = "."
-        , inputRoot    = contentDir
-        , outputRoot   = outputDir
-        , sitePrefix   = sitePrefix
         , updatedFiles = updates
         , cleanBuild   = not hasCache
+        , siteConfig   = cfg
         }
 
   -- 4. run task in context using cache
-  Result _ deps cache' <- runTask t ctx cache
+  (_, deps, cache') <- runTask t ctx cache
 
   AIO.log "Reported dynamic dependencies: "
   AIO.log $ show deps

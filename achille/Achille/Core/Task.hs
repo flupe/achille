@@ -19,6 +19,7 @@ import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
 
 import Control.Category
 import Control.Monad (forM)
+import Control.Monad.Reader.Class
 import Control.Applicative (Alternative, empty, liftA2)
 import Control.Arrow
 
@@ -36,18 +37,23 @@ import System.FilePath.Glob (Pattern)
 import System.FilePath qualified as FP
 import Unsafe.Coerce (unsafeCoerce)
 
-import Prelude            qualified as Prelude
+import Prelude            qualified
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet        qualified as IntSet
 import Data.Map.Strict    qualified as Map
 
 import Achille.Cache
+import Achille.Context (Context)
 import Achille.Diffable as Diffable
+import Achille.DynDeps (DynDeps)
 import Achille.Path
+import Achille.Result
 import Achille.IO
 
 import Achille.Core.Recipe
 import Achille.Core.Program
+
+import Achille.Context qualified as Ctx
 
 
 -- NOTE(flupe): maybe we should *NOT* make all the applications strict.
@@ -77,12 +83,13 @@ instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (Task m a)
 -- NOTE(flupe): Paths and Patterns are not just lifted to tasks, but also get the current
 --              directory prepended.
 
-instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Path) where
+instance {-# OVERLAPPING #-} Monad m => IsString (Task m Path) where
   fromString p = apply rec (pure ())
     where
       rec :: Recipe m () Path
-      rec = recipe "Achille.Core.Task.toPath" \Context{..} cache _ -> do
-        let path :: Path = normalise (currentDir </> fromString p)
+      rec = recipe "Achille.Core.Task.toPath" \cache _ -> do
+        curr <- reader Ctx.currentDir
+        let path :: Path = normalise (curr </> fromString p)
         let same = fromCache cache == Just path
         pure (value (not same) path, toCache path)
 
@@ -101,8 +108,10 @@ toProgram t = Prelude.fst $! unTask t 0
 
 runTask
   :: (Monad m, MonadFail m, AchilleIO m)
-  => Task m a -> Context -> Cache -> m (Result a)
-runTask (toProgram -> p) = runProgram p
+  => Task m a -> Context -> Cache -> m (Value a, DynDeps, Cache)
+runTask (toProgram -> p) ctx cache = do
+  ((v, c), deps) <- runResult (runProgram p cache) ctx
+  pure (v, deps, c)
 {-# INLINE runTask #-}
 
 -- | Sequence two tasks, ignoring the result of the first.

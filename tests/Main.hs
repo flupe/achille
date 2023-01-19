@@ -12,8 +12,6 @@ import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
 
 import Achille qualified as A
-import Achille.Path
-import Achille.Recipe (Context(..))
 import Achille.Task
 
 import Test.Achille.FakeIO

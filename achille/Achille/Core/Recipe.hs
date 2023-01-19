@@ -21,65 +21,10 @@ import Achille.Path
 import Achille.Cache
 import Achille.Diffable
 import Achille.IO
+import Achille.Result
 
 
-data FileDeps = Deps
-  { getFileDeps :: Set Path
-    -- NOTE(flupe): ^ Maybe we want to make this `Map FilePath UTCTime`? (to handle failures gracefully)
-  , getGlobDeps :: [Pattern]
-  } deriving (Show)
-
-instance Semigroup FileDeps where
-  Deps fs1 !g1 <> Deps fs2 !g2 = Deps (fs1 <> fs2) (g1 <> g2)
-
-instance Monoid FileDeps where
-  mempty = Deps mempty mempty
-
-instance Binary FileDeps where
-  get = Deps <$> get <*> (fmap Glob.compile <$> get)
-  put (Deps files pat) =
-       put files
-    *> put (nub $ fmap Glob.decompile pat)
-
-dependsOnFiles :: [Path] -> FileDeps
-dependsOnFiles files = Deps (Set.fromList files) mempty
-
-dependsOnFile :: Path -> FileDeps
-dependsOnFile file = Deps (Set.singleton file) mempty
-
-dependsOnPattern :: Pattern -> FileDeps
-dependsOnPattern pat = Deps mempty [pat]
-
-
--- | Context in which tasks and recipes are run.
-data Context = Context
-  { lastTime     :: UTCTime -- ^ Time of the last run.
-  , cleanBuild   :: Bool    -- ^ Whether to clean build and ignore change information.
-  , currentDir   :: Path    -- ^ Directory used as root for glob patterns, and literal paths.
-  , inputRoot    :: Path
-  , outputRoot   :: Path
-  , updatedFiles :: Map Path UTCTime -- ^ Files that are known to be dynamic dependencies
-                                         --   and for which we have looked up the last modification time.
-  , sitePrefix   :: Text
-  }
-
--- re ^ updatedFiles
--- NOTE(flupe): should a file that doesn't exist anymore but a dynamic dependency be reported when we
---              check all dependencies at startup? or should let the build system proceed to the place 
---              where it's needed, and let it fail here?
---              probably the latter
-
-data Result b = Result
-  { output   :: Value b
-  , fileDeps :: FileDeps
-  , newCache :: Cache
-  }
-
-type PrimRecipe m a b = Context -> Cache -> Value a -> m (Value b, Cache)
-type PrimRecipeDyn m a b = Context -> Cache -> Value a -> m (Result b)
-
-toDyn :: (Value b, Cache) -> Result b
-toDyn (v, c) = Result v mempty c
+type PrimRecipe m a b = Cache -> Value a -> Result m (Value b, Cache)
 
 -- | A recipe is a glorified Kleisli arrow, computing a value of type @b@ in some monad @m@
 --   given some input of type @a@ and a context. The recipe has access to a local cache,
@@ -92,7 +37,7 @@ data Recipe m a b where
   Exl     :: Recipe m (a, b) a
   Exr     :: Recipe m (a, b) b
   Void    :: Recipe m a ()
-  Embed   :: !Text -> !(PrimRecipeDyn m a b) -> Recipe m a b
+  Embed   :: !Text -> !(PrimRecipe m a b) -> Recipe m a b
 
 instance Show (Recipe m a b) where
   show Id = "Id"
@@ -107,41 +52,38 @@ instance Show (Recipe m a b) where
 
 -- TODO(flupe): clean this up?
 recipe :: Functor m => Text -> PrimRecipe m a b -> Recipe m a b
-recipe s r = Embed s (\ctx cache v -> toDyn <$> r ctx cache v)
+recipe = Embed
 {-# INLINE recipe #-}
 
-recipeDyn :: Functor m => Text -> PrimRecipeDyn m a b -> Recipe m a b
-recipeDyn = Embed
-{-# INLINE recipeDyn #-}
 
-runRecipe :: Monad m => Recipe m a b -> PrimRecipeDyn m a b
-runRecipe r ctx cache v = case r of
-  Id -> pure $ Result v mempty cache
+runRecipe :: Monad m => Recipe m a b -> PrimRecipe m a b
+runRecipe r cache x = case r of
+  Id -> pure (x, cache)
 
   Comp g f -> do
     let (cf, cg) = splitCache cache
-    Result y df cf <- runRecipe f ctx cf v
-    Result z dg cg <- runRecipe g ctx cg y
-    pure $ Result z (df <> dg) (joinCache cf cg)
+    (y, cf) <- runRecipe f cf x
+    (z, cg) <- runRecipe g cg y
+    pure (z, joinCache cf cg)
 
   f :***: g -> do -- TODO(flupe): parallelism
     let (cf, cg) = splitCache cache
-        (vx, vy) = splitValue v
-    Result vz df cf <- runRecipe f ctx cf vx
-    Result vw dg cg <- runRecipe g ctx cg vy
-    pure $ Result (joinValue (vz, vw)) (df <> dg) (joinCache cf cg)
+        (a, b) = splitValue x
+    (a, cf) <- runRecipe f cf a
+    (b, cg) <- runRecipe g cg b
+    pure (joinValue (a, b), joinCache cf cg)
 
   f :&&&: g -> do -- TODO(flupe): parallelism
     let (cf, cg) = splitCache cache
-    Result vz df cf <- runRecipe f ctx cf v
-    Result vw dg cg <- runRecipe g ctx cg v
-    pure $ Result (joinValue (vz, vw)) (df <> dg) (joinCache cf cg)
+    (a, cf) <- runRecipe f cf x
+    (b, cg) <- runRecipe g cg x
+    pure (joinValue (a, b), joinCache cf cg)
 
-  Exl  -> pure $ Result (fst $ splitValue v) mempty cache
-  Exr  -> pure $ Result (snd $ splitValue v) mempty cache
-  Void -> pure $ Result unit mempty cache
+  Exl  -> pure (fst (splitValue x), cache)
+  Exr  -> pure (snd (splitValue x), cache)
+  Void -> pure (unit, cache)
 
-  Embed n r -> r ctx cache v
+  Embed n r -> r cache x
 {-# INLINE runRecipe #-}
 
 
@@ -167,7 +109,7 @@ instance Category (Recipe m) where
 
 instance Applicative m => Arrow (Recipe m) where
   -- TODO(flupe): maybe make some smart constructors applying category laws
-  arr f = recipe "Achille.Core.Recipe.arr" \ctx cache v -> pure (f <$> v, cache)
+  arr f = recipe "Achille.Core.Recipe.arr" \cache x -> pure (f <$> x, cache)
   {-# INLINE arr #-}
   first f = f :***: id
   {-# INLINE first #-}

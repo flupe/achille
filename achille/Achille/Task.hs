@@ -73,7 +73,7 @@ pattern (:*:) x y <- (split -> (x, y))
 split :: Task m (a, b) -> (Task m a, Task m b)
 split p = (fst p, snd p)
 
-toURL :: Applicative m => Task m Path -> Task m Text
+toURL :: Monad m => Task m Path -> Task m Text
 toURL = apply Recipe.toURL
 
 write
@@ -89,7 +89,7 @@ copy = apply Recipe.copy
 (-<.>) :: Applicative m => Task m Path -> Task m String -> Task m Path
 path -<.> ext = liftA2 (Path.-<.>) path ext
 
-readText :: (AchilleIO m, Applicative m) => Task m Path -> Task m Text
+readText :: (AchilleIO m, Monad m) => Task m Path -> Task m Text
 readText = apply Recipe.readText
 
 

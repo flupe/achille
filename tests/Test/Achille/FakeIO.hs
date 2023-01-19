@@ -3,7 +3,8 @@
 module Test.Achille.FakeIO where
 
 import Data.Bifunctor (bimap)
-import Data.Map.Strict (Map) 
+import Data.Functor ((<&>))
+import Data.Map.Strict (Map)
 import Data.Maybe
 import Data.Time.Clock (UTCTime(..))
 import Control.Monad.Fail (MonadFail, fail)
@@ -21,7 +22,8 @@ import Test.Tasty.HUnit
 import Achille.Cache (Cache, emptyCache)
 import Achille.Diffable (Value(theVal))
 import Achille.Path
-import Achille.Recipe (Context, Result(output))
+import Achille.Context (Context)
+import Achille.Result
 import Achille.Task (Task, runTask)
 import Achille.IO hiding ()
 
@@ -99,10 +101,10 @@ getBS :: Path -> FileSystem -> BS.ByteString
 getBS src = maybe BS.empty contents . Map.lookup src
 
 retrieveActions
-  :: FakeIO (Result a)    -- the fake IO computation
-  -> FileSystem           -- the underlying input FS
+  :: FakeIO a    -- the fake IO computation
+  -> FileSystem  -- the underlying input FS
   -> (Maybe a, [Actions])
-retrieveActions t fs = runWriter (retrieve (fmap (theVal . output) t))
+retrieveActions t fs = runWriter (retrieve t)
   where
     retrieve :: FakeIO a -> Writer [Actions] (Maybe a)
     retrieve (ReadFile key)     = writer (Just (getBS key fs), [HasReadFile key])
@@ -142,6 +144,6 @@ exactRun :: (Show b, Eq b)
   -> (Maybe b, [Actions])
   -> Assertion
 exactRun fs ctx t =
-    let fakeIO = runTask t ctx emptyCache
+    let fakeIO = runTask t ctx emptyCache <&> \(v, x, y) -> theVal v
         trace = retrieveActions fakeIO fs
     in (trace @?=)
