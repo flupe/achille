@@ -68,7 +68,7 @@ readText :: (Monad m, AchilleIO m) => Recipe m Path Text
 readText = recipe "readText" \cache v -> do
   path     <- (</>) <$> Res.contentDir <*> pure (theVal v)
   lastTime <- Res.lastTime
-  time <- getModificationTime path
+  time <- AIO.getModificationTime path
   text <- decodeUtf8 <$> AIO.readFile path
   pure (value (time > lastTime || hasChanged v) text, cache)
 
@@ -105,7 +105,7 @@ copy = toURL <<< recipe "copy" \cache vsrc -> do
   cleanBuild <- reader Ctx.cleanBuild
   -- TODO(flupe): check if file exists
   -- TODO(flupe): check if output file is there?
-  time <- getModificationTime ipath
+  time <- AIO.getModificationTime ipath
   when (cleanBuild || hasChanged vsrc || time > lastTime) $
     AIO.log ("Copying " <> show ipath) *> AIO.copyFile ipath opath
   tell $ dependsOnFile ipath

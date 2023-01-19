@@ -182,7 +182,7 @@ runProgramIn env t cache = case t of
               env' = bindEnv env (value False src)
           ((t, cache'), deps) <- listen $
             local (\c -> c { currentDir = currentDir
-                           , updatedFiles = Map.insert src mtime updatedFiles
+                           , updatedFiles = Map.insert (contentDir </> src) mtime updatedFiles
                            })
             $ runProgramIn env' t cache
           pure ( value (Just (theVal t) == oldVal) (theVal t)
