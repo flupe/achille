@@ -40,8 +40,8 @@ library
                  , Achille.IO
                  , Achille.Path
                  , Achille.Recipe
-                 , Achille.Result
                  , Achille.Task
+                 , Achille.Task.Prim
                  , Achille.Writable
   other-modules: Achille.Core.Recipe
                , Achille.Core.Program

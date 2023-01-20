@@ -24,8 +24,8 @@ import Achille.Cache (Cache, emptyCache)
 import Achille.Diffable (Value(theVal))
 import Achille.Path
 import Achille.Context (Context)
-import Achille.Result
 import Achille.Task (Task, runTask)
+import Achille.Task.Prim
 import Achille.IO hiding ()
 
 -- | Poor man's glob. Inefficient, but that's not the point.

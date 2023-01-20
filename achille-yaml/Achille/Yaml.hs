@@ -6,18 +6,18 @@ import Prelude hiding ((.), id)
 import Control.Arrow
 import Control.Category
 import Control.Monad (unless)
-import Data.Binary (Binary)
 import Data.Aeson (FromJSON)
+import Data.Binary (Binary)
+import Data.Functor (($>))
 import Data.Yaml (decodeEither', prettyPrintParseException)
 
 import Achille.IO
-import Achille.Cache
 import Achille.Config (Config(..))
 import Achille.Context (Context(..))
 import Achille.Diffable
 import Achille.Path
 import Achille.Recipe (recipe, readByteString)
-import Achille.Result
+import Achille.Task.Prim
 import Achille.Task hiding (fail)
 
 
@@ -31,7 +31,7 @@ readYaml = apply $ (id &&& readByteString)
   Context{..} <- getContext
   let Config{..} = siteConfig
   let (vsrc, vbs) = splitValue v
-  stored :: Maybe a <- fromCache <$> getCache
+  stored :: Maybe a <- fromCache
   let path = contentDir </> currentDir </> theVal vsrc
   mtime <- getModificationTime path
   case stored of
@@ -41,4 +41,4 @@ readYaml = apply $ (id &&& readByteString)
         Left err -> fail $ prettyPrintParseException err
         Right x -> case stored of
           Just y | x == y -> pure (value False x)
-          _               -> putCache (toCache x) *> pure (value True x)
+          _               -> toCache x $> value True x

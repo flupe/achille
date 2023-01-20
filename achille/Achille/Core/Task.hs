@@ -18,13 +18,10 @@ module Achille.Core.Task
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
 
 import Control.Category
-import Control.Monad (forM)
-import Control.Monad.Reader.Class
+import Control.Monad.Reader.Class (reader)
 import Control.Applicative (Alternative, empty, liftA2)
 import Control.Arrow
-
 import Data.Binary (Binary)
-import Data.Functor ((<&>))
 import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
 import Data.List (sort)
@@ -32,28 +29,23 @@ import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
-
 import System.FilePath.Glob (Pattern)
-import System.FilePath qualified as FP
 import Unsafe.Coerce (unsafeCoerce)
+
+import Achille.Core.Recipe
+import Achille.Core.Program
+import Achille.Diffable as Diffable
+import Achille.DynDeps (DynDeps)
+import Achille.Path
+import Achille.Task.Prim
+import Achille.IO
 
 import Prelude            qualified
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet        qualified as IntSet
 import Data.Map.Strict    qualified as Map
-
-import Achille.Cache
-import Achille.Context (Context)
-import Achille.Diffable as Diffable
-import Achille.DynDeps (DynDeps)
-import Achille.Path
-import Achille.Result
-import Achille.IO
-
-import Achille.Core.Recipe
-import Achille.Core.Program
-
-import Achille.Context qualified as Ctx
+import System.FilePath    qualified as FP
+import Achille.Context    qualified as Ctx
 
 
 -- NOTE(flupe): maybe we should *NOT* make all the applications strict.
@@ -90,8 +82,8 @@ instance {-# OVERLAPPING #-} Monad m => IsString (Task m Path) where
       rec = recipe "Achille.Core.Task.toPath" \_ -> do
         curr <- reader Ctx.currentDir
         let path :: Path = normalise (curr </> fromString p)
-        same <- (Just path ==) . fromCache <$> getCache
-        putCache (toCache path)
+        same <- (Just path ==) <$> fromCache
+        toCache path
         pure (value (not same) path)
 
 -- instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Pattern) where

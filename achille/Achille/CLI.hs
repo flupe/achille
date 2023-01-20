@@ -34,7 +34,7 @@ import Achille.IO           qualified as AIO
 import Achille.Core.Task (toProgram)
 import Achille.Context (Context(..))
 import Achille.DynDeps
-import Achille.Result
+import Achille.Task.Prim
 import Achille.Core.Recipe
 
 

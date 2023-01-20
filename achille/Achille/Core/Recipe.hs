@@ -18,10 +18,9 @@ import Data.Set qualified as Set
 import System.FilePath.Glob qualified as Glob
 
 import Achille.Path
-import Achille.Cache
 import Achille.Diffable
 import Achille.IO
-import Achille.Result
+import Achille.Task.Prim
 
 
 type PrimRecipe m a b = Value a -> PrimTask m (Value b)
@@ -61,28 +60,28 @@ runRecipe r x = case r of
   Id -> pure x
 
   Comp g f -> do
-    (cf, cg) <- splitCache <$> getCache
+    (cf, cg) <- splitCache
     (y, cf) <- withCache cf $ runRecipe f x
     case y of
-      Nothing -> putCache (joinCache cf cg) *> silentFail
+      Nothing -> toCache (cf, cg) *> halt
       Just y  -> do
         (z, cg) <- withCache cg $ runRecipe g y
-        putCache (joinCache cf cg)
+        joinCache cf cg
         forward z
 
   f :***: g -> do -- TODO(flupe): parallelism
     let (a, b) = splitValue x
-    (cf, cg) <- splitCache <$> getCache
+    (cf, cg) <- splitCache
     (a, cf) <- withCache cf $ runRecipe f a
     (b, cg) <- withCache cg $ runRecipe g b
-    putCache (joinCache cf cg)
+    joinCache cf cg
     forward $ joinValue <$> ((,) <$> a <*> b)
 
   f :&&&: g -> do -- TODO(flupe): parallelism
-    (cf, cg) <- splitCache <$> getCache
+    (cf, cg) <- splitCache
     (a, cf) <- withCache cf $ runRecipe f x
     (b, cg) <- withCache cg $ runRecipe g x
-    putCache (joinCache cf cg)
+    joinCache cf cg
     forward $ joinValue <$> ((,) <$> a <*> b)
 
   Exl  -> pure $ fst (splitValue x)

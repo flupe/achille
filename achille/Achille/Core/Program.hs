@@ -33,17 +33,17 @@ import Data.Map.Strict      qualified as Map
 import System.FilePath      qualified as FP
 import System.FilePath.Glob qualified as Glob
 
-import Achille.Cache
-import Achille.Config
+import Achille.Config (Config(..))
 import Achille.Context (Context(..))
 import Achille.Diffable
 import Achille.DynDeps (DynDeps, getFileDeps, dependsOnPattern)
 import Achille.IO (AchilleIO)
 import Achille.Path
-import Achille.Result
+import Achille.Task.Prim
 import Achille.Core.Recipe
 
-import Achille.IO qualified as AIO
+import Achille.Cache qualified as Cache
+import Achille.IO    qualified as AIO
 
 
 -- | @Program m a@ is the internal representaion of tasks in achille.
@@ -128,20 +128,20 @@ runProgramIn env t = case t of
     Nothing -> fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
 
   Seq x y -> do
-    (cx, cy) <- splitCache <$> getCache
+    (cx, cy) <- splitCache
     (_,  cx) <- withCache cx $ runProgramIn env x
     (vy, cy) <- withCache cy $ runProgramIn env y
-    putCache (joinCache cx cy)
+    joinCache cx cy
     forward vy
 
   Bind x f -> do
-    (cx, cf) <- splitCache <$> getCache
+    (cx, cf) <- splitCache
     (vx, cx) <- withCache cx $ runProgramIn env x
     case vx of
-      Nothing -> putCache (joinCache cx cf) *> silentFail
+      Nothing -> joinCache cx cf *> halt
       Just vx -> do
         (vy, cf) <- withCache cf $ runProgramIn (bindEnv env vx) f
-        putCache (joinCache cx cf)
+        joinCache cx cf
         forward vy
     -- TODO(flupe): propagate failure to environment
     --              to allow things that do not depend on the value to be evaluated
@@ -152,22 +152,22 @@ runProgramIn env t = case t of
   --              this is almost identical to Seq
   -- TODO(flupe): parallelism
   Pair x y -> do
-    (cx, cy) <- splitCache <$> getCache
+    (cx, cy) <- splitCache
     (a, cx) <- withCache cx $ runProgramIn env x
     (b, cy) <- withCache cy $ runProgramIn env y
-    putCache (joinCache cx cy)
+    joinCache cx cy
     forward (joinValue <$> ((,) <$> a <*> b))
 
   Val v -> pure v
 
   Apply r x -> do
-    (cx, cr) <- splitCache <$> getCache
+    (cx, cr) <- splitCache
     (a, cx) <- withCache cx $ runProgramIn env x
     case a of
-      Nothing -> putCache (joinCache cx cr) *> silentFail
+      Nothing -> joinCache cx cr *> halt
       Just a -> do
         (b, cr) <- withCache cr $ runRecipe r a
-        putCache (joinCache cx cr)
+        joinCache cx cr
         forward b
 
   Match pat (t :: Program m b) vars -> do
@@ -175,13 +175,13 @@ runProgramIn env t = case t of
     let Config{..} = siteConfig
     let thepat = FP.normalise (toFilePath currentDir <> "/" <> Glob.decompile pat)
     let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
-    stored :: Map Path Cache <- fromMaybe Map.empty . fromCache <$> getCache
+    stored :: Map Path Cache <- fromMaybe Map.empty <$> fromCache
     paths <- sort . fmap (normalise . makeRelative contentDir) <$> AIO.glob contentDir pat'
     res :: [(Maybe (Value b), Cache)] <- forM paths \src -> do
       mtime <- AIO.getModificationTime (contentDir </> src)
       let currentDir = takeDirectory src
       let fileCache = stored Map.!? src
-      case liftA2 (,) fileCache (fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
+      case liftA2 (,) fileCache (Cache.fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
         Just (cache, (x, deps, _))
           | mtime <= lastTime
           , not (envChanged env vars)
@@ -191,7 +191,7 @@ runProgramIn env t = case t of
         mpast -> do
           let (oldVal, cache) = case mpast of
                 Just (_, (x, _, cache)) -> (Just x, cache)
-                Nothing                 -> (Nothing, emptyCache)
+                Nothing                 -> (Nothing, Cache.emptyCache)
               env' = bindEnv env (value False src)
           --(t, cache') <-
           local (\c -> c { currentDir = currentDir
@@ -203,7 +203,7 @@ runProgramIn env t = case t of
           --      )
     let (values, caches) = unzip res
     tell (dependsOnPattern pat')
-    putCache (toCache $ Map.fromAscList (zip paths caches))
+    toCache (Map.fromAscList (zip paths caches))
     pure (joinValue (catMaybes values))
 
 {-# INLINE runProgramIn #-}

@@ -24,7 +24,7 @@ import Achille.Diffable
 import Achille.IO
 import Achille.Path
 import Achille.Recipe
-import Achille.Result
+import Achille.Task.Prim
 
 -- TODO(flupe): caching/hashing of pandoc options
 

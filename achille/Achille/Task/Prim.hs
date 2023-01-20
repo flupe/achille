@@ -1,94 +1,73 @@
 {-# LANGUAGE DerivingStrategies #-}
-module Achille.Result
-  ( PrimTask
+module Achille.Task.Prim
+  (  module Achille.Cache
+  , module Achille.Config
+  , module Achille.Context
+  , PrimTask
   , runPrimTask
+  , lift
+  , halt
+  , forward
   , setDeps
   , getContext
   , getConfig
-  , lift
-  , silentFail
-  , forward
   , withCache
-  , getCache
-  , putCache
+  , fromCache
+  , splitCache
+  , joinCache
+  , toCache
   , contentDir
   , outputDir
   , updatedFiles
   , lastTime
   ) where
 
+import Data.Binary (Binary)
 import Data.Map.Strict (Map)
 import Data.Function ((&))
-import Data.Functor.Compose
 import Data.Time (UTCTime)
 import Control.Applicative (liftA2)
-import Control.Monad.Trans (MonadTrans, lift)
 import Control.Monad.RWS.Strict
 import Control.Monad.Reader.Class
-import Control.Monad.Writer.Class
 import Control.Monad.State.Class
+import Control.Monad.Trans (MonadTrans(lift))
+import Control.Monad.Trans.Maybe
+import Control.Monad.Writer.Class
 
-import Data.Map.Strict qualified as Map
-
-import Achille.Cache
+import Achille.Cache (Cache)
 import Achille.Config (Config)
 import Achille.Context (Context)
 import Achille.DynDeps (DynDeps, dependsOnFile, dependsOnPattern)
 import Achille.Path (Path)
 import Achille.IO as AIO
 
-import Achille.Config qualified as Cfg
+import Data.Map.Strict qualified as Map
+import Achille.Cache   qualified as Cache
+import Achille.Config  qualified as Cfg
 import Achille.Context qualified as Ctx
 
 
 -- PrimTask m a ≃ Context -> Cache -> m (Maybe a, DynDeps, Cache)
-newtype PrimTask m a = PrimTask
-  { unPrimTask :: Compose (RWST Context DynDeps Cache m) Maybe a
-  } deriving newtype (Functor, Applicative)
-
-instance Monad m => Monad (PrimTask m) where
-  PrimTask (Compose x) >>= f =
-    PrimTask $ Compose $ x >>= \case
-      Nothing -> pure Nothing
-      Just x  -> getCompose (unPrimTask (f x))
-
-instance Monad m => MonadReader Context (PrimTask m) where
-  ask = PrimTask $ Compose $ Just <$> ask
-  local f (PrimTask (Compose x)) = PrimTask (Compose (local f x))
-
-instance Monad m => MonadWriter DynDeps (PrimTask m) where
-  writer (x, w) = PrimTask $ Compose $ writer (Just x, w)
-  tell deps = PrimTask (Compose (Just <$> tell deps))
-  listen (PrimTask (Compose x)) =
-    PrimTask $ Compose do
-      (y, deps) <- listen x
-      pure (liftA2 (,) y (pure deps))
-  pass (PrimTask (Compose x)) =
-    PrimTask $ Compose do
-      (y, deps) <- listen x
-      case y of
-        Nothing -> pure Nothing
-        Just (z, f) -> writer (Just z, f deps)
-
-instance Monad m => MonadState Cache (PrimTask m) where
-  get = PrimTask $ Compose $ Just <$> get
-  put cache = PrimTask $ Compose $ Just <$> put cache
+newtype PrimTask m a =
+  PrimTask { unPrimTask :: MaybeT (RWST Context DynDeps Cache m) a }
+  deriving newtype (Functor, Applicative, Monad)
+  deriving newtype (MonadReader Context, MonadState Cache, MonadWriter DynDeps)
 
 instance MonadTrans PrimTask where
-  lift = PrimTask . Compose . lift . fmap Just
+  lift = PrimTask . lift . lift
 
-silentFail :: Monad m => PrimTask m a
-silentFail = PrimTask (Compose (pure Nothing))
+halt :: Monad m => PrimTask m a
+halt = PrimTask $ MaybeT (pure Nothing)
 
 forward :: Monad m => Maybe a -> PrimTask m a
-forward Nothing = silentFail
+forward Nothing = halt
 forward (Just x) = pure x
 
 instance (Monad m, AchilleIO m) => MonadFail (PrimTask m) where
-  fail s = lift (AIO.log s) *> PrimTask (Compose (pure Nothing))
+  fail s = lift (AIO.log s) *> halt
 
 runPrimTask :: PrimTask m a -> Context -> Cache -> m (Maybe a, Cache, DynDeps)
-runPrimTask (PrimTask (Compose x)) = runRWST x
+runPrimTask (PrimTask x) = runRWST $ runMaybeT x
 
 instance (Monad m, AchilleIO m) => AchilleIO (PrimTask m) where
   getModificationTime path =
@@ -113,15 +92,22 @@ instance (Monad m, AchilleIO m) => AchilleIO (PrimTask m) where
 --                smart path transformation?
 
 withCache :: Monad m => Cache -> PrimTask m a -> PrimTask m (Maybe a, Cache)
-withCache lcache (PrimTask (Compose t)) = PrimTask $ Compose $ RWST \ctx cache -> do
-  (x, lcache, deps) <- runRWST t ctx lcache
-  pure (Just (x, lcache), cache, deps)
+withCache lcache (PrimTask (runMaybeT -> t)) =
+  PrimTask $ MaybeT $ RWST \ctx cache -> do
+    (x, lcache, deps) <- runRWST t ctx lcache
+    pure (Just (x, lcache), cache, deps)
 
-getCache :: Monad m => PrimTask m Cache
-getCache = get
+fromCache :: (Monad m, Binary a) => PrimTask m (Maybe a)
+fromCache = Cache.fromCache <$> get
 
-putCache :: Monad m => Cache -> PrimTask m ()
-putCache = put
+toCache :: (Monad m, Binary a) => a -> PrimTask m ()
+toCache = put . Cache.toCache
+
+splitCache :: Monad m => PrimTask m (Cache, Cache)
+splitCache = Cache.splitCache <$> get
+
+joinCache :: Monad m => Cache -> Cache -> PrimTask m ()
+joinCache ca cb = put (Cache.joinCache ca cb)
 
 -- Some context projections to avoid having to do it manually each time
 contentDir :: Monad m => PrimTask m Path

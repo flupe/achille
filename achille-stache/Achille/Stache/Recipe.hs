@@ -22,7 +22,6 @@ import Text.Mustache
 
 import Data.Map.Strict qualified as Map
 
-import Achille.Cache
 import Achille.Context (Context(..))
 import Achille.Config
 import Achille.DynDeps
@@ -30,7 +29,7 @@ import Achille.Diffable
 import Achille.IO
 import Achille.Path
 import Achille.Recipe
-import Achille.Result
+import Achille.Task.Prim
 
 -- standalone instances
 deriving instance Binary PName
@@ -51,12 +50,12 @@ loadTemplate = recipe "loadTemplate" \vsrc -> do
   unlessM (doesFileExist path) $ fail ("Could not find template file " <> show path)
   mtime <- getModificationTime path
   setDeps (dependsOnFile path)
-  fromCache <$> getCache >>= \case
+  fromCache >>= \case
     Just (t :: Template) | mtime <= lastTime, not (hasChanged vsrc) ->
       pure (value False t)
     mc -> do
       t <- lift $ compileMustacheFile (toFilePath path) -- TODO(flupe): handle parser exception gracefully
-      putCache (toCache t)
+      toCache t
       pure (value (Just t /= mc) t)
 
 tToNode :: Template -> [Node]
@@ -70,7 +69,7 @@ loadTemplates = recipe "loadTemplates" \vdir -> do
   Context{..} <- getContext
   let Config{..} = siteConfig
   let dir = contentDir </> theVal vdir
-  stored :: Map PName Template <- fromMaybe Map.empty . fromCache <$> getCache
+  stored :: Map PName Template <- fromMaybe Map.empty <$> fromCache
   unlessM (doesDirExist dir) $ fail ("Could not find directory " <> show dir)
   files <- fmap (dir </>) . filter ((== ".mustache") . takeExtension) <$> listDir dir
   templates :: [Value Template] <- forM files \src -> do
@@ -86,7 +85,7 @@ loadTemplates = recipe "loadTemplates" \vdir -> do
     tps' = tToNode . theVal <$> tps
     tps'' = (\(Value t c i) -> Value t { templateCache = tps' } c i) <$> tps
   setDeps (dependsOnFiles files)
-  putCache $ toCache (theVal <$> tps)
+  toCache (theVal <$> tps)
   pure (joinValue tps'')
 
 applyTemplate :: (Monad m, ToJSON a) => Recipe m (Template, a) Text

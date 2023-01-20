@@ -26,40 +26,35 @@ import Control.Arrow
 import Data.Functor (($>))
 import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
-import Data.List qualified as List (sortOn)
 import Data.Map.Strict (Map)
 import Data.Maybe (isNothing)
 import Data.Set (Set)
 import Data.Text (Text, unpack, pack)
 import Data.Text.Encoding (decodeUtf8)
 
-import Prelude qualified
-import Data.Map.Strict qualified as Map
-
 import Achille.IO as AIO
 import Achille.Diffable
-import Achille.Core.Recipe
-  ( Recipe, PrimRecipe
-  , recipe, runRecipe
-  )
+import Achille.Core.Recipe ( Recipe, PrimRecipe , recipe, runRecipe)
 import Achille.Context (Context)
 import Achille.DynDeps
 import Achille.Path
-import Achille.Result
+import Achille.Task.Prim
 import Achille.Writable (Writable)
 
-import Achille.Writable qualified as Writable
-import Achille.Result qualified as Res
-import Achille.Context qualified as Ctx
-import Achille.Config qualified as Cfg
+import Prelude           qualified
+import Data.List         qualified as List (sortOn)
+import Data.Map.Strict   qualified as Map
+import Achille.Writable  qualified as Writable
+import Achille.Context   qualified as Ctx
+import Achille.Config    qualified as Cfg
 
 -- TODO(flupe): remove getModificationTime invocations when needed
 
 -- | Read a bytestring from file.
 readByteString :: (Monad m, AchilleIO m) => Recipe m Path ByteString
 readByteString = recipe "readText" \v -> do
-  path     <- (</>) <$> Res.contentDir <*> pure (theVal v)
-  lastTime <- Res.lastTime
+  path     <- (</>) <$> contentDir <*> pure (theVal v)
+  lastTime <- lastTime
   time <- getModificationTime path
   text <- AIO.readFile path
   pure (value (time > lastTime || hasChanged v) text)
@@ -67,8 +62,8 @@ readByteString = recipe "readText" \v -> do
 -- | Read text from file.
 readText :: (Monad m, AchilleIO m) => Recipe m Path Text
 readText = recipe "readText" \v -> do
-  path     <- (</>) <$> Res.contentDir <*> pure (theVal v)
-  lastTime <- Res.lastTime
+  path     <- (</>) <$> contentDir <*> pure (theVal v)
+  lastTime <- lastTime
   time <- AIO.getModificationTime path
   text <- decodeUtf8 <$> AIO.readFile path
   pure (value (time > lastTime || hasChanged v) text)
@@ -89,20 +84,20 @@ write
   => Recipe m (Path, a) Text
 write = toURL <<< recipe "write" \v -> do
   let (vsrc, vx) = splitValue v
-  path       <- (</>) <$> Res.outputDir <*> pure (theVal vsrc)
+  path       <- (</>) <$> outputDir <*> pure (theVal vsrc)
   cleanBuild <- reader Ctx.cleanBuild
   -- NOTE(flupe): maybe also when the output file is no longer here
   when (cleanBuild || hasChanged v)
     $  AIO.log ("Writing " <> show path)
-    *> (lift $ Writable.write path (theVal vx))
+    *> lift (Writable.write path (theVal vx))
   pure vsrc
 
 -- | Copies a file to the output path, preserving its name.
 copy :: (Monad m, AchilleIO m) => Recipe m Path Text
 copy = toURL <<< recipe "copy" \vsrc -> do
-  ipath <- (</>) <$> Res.contentDir <*> pure (theVal vsrc)
-  opath <- (</>) <$> Res.outputDir  <*> pure (theVal vsrc)
-  lastTime <- Res.lastTime
+  ipath <- (</>) <$> contentDir <*> pure (theVal vsrc)
+  opath <- (</>) <$> outputDir  <*> pure (theVal vsrc)
+  lastTime <- lastTime
   cleanBuild <- reader Ctx.cleanBuild
   -- TODO(flupe): check if file exists
   -- TODO(flupe): check if output file is there?
