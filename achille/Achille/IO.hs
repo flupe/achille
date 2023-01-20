@@ -39,6 +39,8 @@ class AchilleIO m where
     readCommand :: String -> [String] -> m String
     -- | Log a string to stdout.
     log :: String -> m ()
+    -- | Log a /debug/ string to stdout.
+    debug :: String -> m ()
 
     -- | Find all paths matching a given globpattern, relative to a given directory.
     --   All paths returned must be relative to the current working directory.
@@ -65,5 +67,6 @@ instance AchilleIO IO where
     callCommand          = Process.callCommand
     readCommand cmd args = Process.readProcess cmd args []
     log                  = Prelude.putStrLn
+    debug                = Prelude.putStrLn
     glob dir pattern     = map fromString <$> Glob.globDir1 pattern (toFilePath dir)
     getModificationTime  = Directory.getModificationTime . toFilePath

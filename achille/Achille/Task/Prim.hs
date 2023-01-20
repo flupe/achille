@@ -64,7 +64,7 @@ forward Nothing = halt
 forward (Just x) = pure x
 
 instance (Monad m, AchilleIO m) => MonadFail (PrimTask m) where
-  fail s = lift (AIO.log s) *> halt
+  fail s = lift (AIO.debug s) *> halt
 
 runPrimTask :: PrimTask m a -> Context -> Cache -> m (Maybe a, Cache, DynDeps)
 runPrimTask (PrimTask x) = runRWST $ runMaybeT x
@@ -85,6 +85,7 @@ instance (Monad m, AchilleIO m) => AchilleIO (PrimTask m) where
   listDir = lift . AIO.listDir
   callCommand = lift . AIO.callCommand
   log = lift . AIO.log
+  debug = lift . AIO.debug
   readCommand cmd args = lift (AIO.readCommand cmd args)
   glob root pat = lift (AIO.glob root pat) <* tell (dependsOnPattern pat)
 

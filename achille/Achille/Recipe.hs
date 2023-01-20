@@ -1,9 +1,10 @@
 {-# LANGUAGE GADTs, ApplicativeDo, RecordWildCards, OverloadedStrings #-}
 module Achille.Recipe
   ( module Achille.Core.Recipe
+  , log
+  , debug
   , readText
   , readByteString
-  , debug
   , toURL
   , write
   , copy
@@ -17,7 +18,7 @@ module Achille.Recipe
   , (!)
   ) where
 
-import Prelude hiding (reverse, take, drop, map)
+import Prelude hiding (reverse, take, drop, map, log, readFile)
 import Control.Monad (when)
 import Control.Monad.Trans (lift)
 import Control.Monad.Writer.Class
@@ -32,7 +33,7 @@ import Data.Set (Set)
 import Data.Text (Text, unpack, pack)
 import Data.Text.Encoding (decodeUtf8)
 
-import Achille.IO as AIO
+import Achille.IO hiding (debug, log)
 import Achille.Diffable
 import Achille.Core.Recipe ( Recipe, PrimRecipe , recipe, runRecipe)
 import Achille.Context (Context)
@@ -44,6 +45,7 @@ import Achille.Writable (Writable)
 import Prelude           qualified
 import Data.List         qualified as List (sortOn)
 import Data.Map.Strict   qualified as Map
+import Achille.IO        qualified as AIO
 import Achille.Writable  qualified as Writable
 import Achille.Context   qualified as Ctx
 import Achille.Config    qualified as Cfg
@@ -56,7 +58,7 @@ readByteString = recipe "readText" \v -> do
   path     <- (</>) <$> contentDir <*> pure (theVal v)
   lastTime <- lastTime
   time <- getModificationTime path
-  text <- AIO.readFile path
+  text <- readFile path
   pure (value (time > lastTime || hasChanged v) text)
 
 -- | Read text from file.
@@ -64,13 +66,17 @@ readText :: (Monad m, AchilleIO m) => Recipe m Path Text
 readText = recipe "readText" \v -> do
   path     <- (</>) <$> contentDir <*> pure (theVal v)
   lastTime <- lastTime
-  time <- AIO.getModificationTime path
-  text <- decodeUtf8 <$> AIO.readFile path
+  time <- getModificationTime path
+  text <- decodeUtf8 <$> readFile path
   pure (value (time > lastTime || hasChanged v) text)
 
 -- | Print a message to stdout.
+log :: (Monad m, AchilleIO m) => Recipe m Text ()
+log = recipe "debug" \v -> AIO.log (unpack $ theVal v) $> unit
+
+-- | Print a /debug/ message to stdout.
 debug :: (Monad m, AchilleIO m) => Recipe m Text ()
-debug = recipe "debug" \v -> AIO.log (unpack $ theVal v) $> unit
+debug = recipe "debug" \v -> AIO.debug (unpack $ theVal v) $> unit
 
 -- | Convert a path to a proper absolute URL, including the site prefix.
 toURL :: Monad m => Recipe m Path Text
@@ -88,7 +94,7 @@ write = toURL <<< recipe "write" \v -> do
   cleanBuild <- reader Ctx.cleanBuild
   -- NOTE(flupe): maybe also when the output file is no longer here
   when (cleanBuild || hasChanged v)
-    $  AIO.log ("Writing " <> show path)
+    $  AIO.debug ("Writing " <> show path)
     *> lift (Writable.write path (theVal vx))
   pure vsrc
 
@@ -103,7 +109,7 @@ copy = toURL <<< recipe "copy" \vsrc -> do
   -- TODO(flupe): check if output file is there?
   time <- AIO.getModificationTime ipath
   when (cleanBuild || hasChanged vsrc || time > lastTime) $
-    AIO.log ("Copying " <> show ipath) *> AIO.copyFile ipath opath
+    AIO.debug ("Copying " <> show ipath) *> AIO.copyFile ipath opath
   tell $ dependsOnFile ipath
   pure vsrc
 

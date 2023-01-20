@@ -46,6 +46,7 @@ data FakeIO a where
     Glob                :: Path -> Glob.Pattern -> FakeIO [Path]
     GetModificationTime :: Path -> FakeIO UTCTime
     Fail                :: String -> FakeIO a
+    Log                 :: String -> FakeIO ()
 
     SeqAp               :: FakeIO (a -> b) -> FakeIO a -> FakeIO b
     Fmap                :: (a -> b) -> FakeIO a -> FakeIO b
@@ -66,7 +67,8 @@ instance AchilleIO FakeIO where
     doesFileExist       = DoesFileExist
     doesDirExist        = DoesDirExist
     callCommand         = CallCommand
-    log s               = pure ()
+    log s               = Log s
+    debug s             = pure ()
     glob                = Glob
     listDir             = undefined
     readCommand         = undefined
@@ -83,6 +85,7 @@ data Actions
     | CopiedFile Path Path
     | CalledCommand String
     | Failed String
+    | Logged String
     deriving (Eq, Show)
 
 data File = File
@@ -137,6 +140,8 @@ retrieveActions t fs = runWriter (retrieve t)
       case x' of
         Nothing -> pure Nothing
         Just x' -> retrieve (f x')
+
+    retrieve (Log s) = writer (Just (), [Logged s])
 
 exactRun :: (Show b, Eq b)
   => FileSystem

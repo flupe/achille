@@ -1,9 +1,11 @@
-{-# LANGUAGE GADTs, RecordWildCards, ViewPatterns, PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns, OverloadedStrings, PatternSynonyms #-}
 
 module Achille.Task 
   ( module Achille.Core.Task
   , pattern (:*:)
   , toURL
+  , log
+  , debug
   , write
   , copy
   , (-<.>)
@@ -24,7 +26,7 @@ module Achille.Task
   ) where
 
 import Prelude
-  hiding (fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
+  hiding (log, fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
 import Control.Applicative (Applicative(liftA2))
 import Control.Category
 import Control.Arrow (arr)
@@ -75,6 +77,12 @@ split p = (fst p, snd p)
 
 toURL :: Monad m => Task m Path -> Task m Text
 toURL = apply Recipe.toURL
+
+log :: (AchilleIO m, Monad m) => Task m Text -> Task m ()
+log = apply Recipe.log
+
+debug :: (AchilleIO m, Monad m) => Task m Text -> Task m ()
+debug = apply Recipe.debug
 
 write
   :: (AchilleIO m, Monad m, Writable m a)

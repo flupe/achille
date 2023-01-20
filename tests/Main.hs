@@ -16,8 +16,9 @@ import Achille.Task
 
 import Test.Achille.FakeIO
 import Test.Achille.Common
-import Test.Achille.Match qualified as Match
+import Test.Achille.Match     qualified as Match
 import Test.Achille.ReadWrite qualified as ReadWrite
+import Test.Achille.Recovery  qualified as Recovery
 
 
 main :: IO ()
@@ -27,6 +28,7 @@ tests :: TestTree
 tests = testGroup "Tests"
   [ Match.tests
   , ReadWrite.tests
+  , Recovery.tests
   , testCase "copy" $
       exactRun baseFS baseCtx
         A.do copy "un.txt"
