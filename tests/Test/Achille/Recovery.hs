@@ -14,39 +14,69 @@ import Achille as A
 tests :: TestTree
 tests = testGroup "error recovery tests"
 
-  [ testCase "seq failure" $
+  [ testCase "seq failure first" $ exactRun baseFS baseCtx
 
-    -- the first task fails, yet the second one will succeed
+      -- the first task fails, yet the second one will succeed
 
-      exactRun baseFS baseCtx
+      A.do
+        fail "oops" >>= log
+        log "hello"
 
-        A.do
-          fail "oops" >>= log
-          log "hello"
+      (Just (), [ Logged "hello" ])
 
-        (Just (), [ Logged "hello" ])
+  , testCase "seq failure last" $ exactRun baseFS baseCtx
 
-  , testCase "seq failure" $
+      -- and the ordering doesn't matter,
+      -- though if the last one fails we get no result
 
-    -- and the ordering doesn't matter,
-    -- though if the last one fails we get no result
+      A.do
+        log "hello"
+        fail "oops" >>= log
 
-      exactRun baseFS baseCtx
+      (Nothing, [ Logged "hello" ])
 
-        A.do
-          log "hello"
-          fail "oops" >>= log
+  , testCase "pair failure" $ exactRun baseFS baseCtx
 
-        (Nothing, [ Logged "hello" ])
+      -- Same thing for pairs
+      -- either subtask can fail and the other succeed
 
-  , testCase "pair failure" $
+      A.do (fail "oops" >>= log) :*: log "ok"
 
-    -- Same thing for pairs
-    -- either subtask can fail and the other succeed
+      (Nothing, [ Logged "ok" ])
 
-      exactRun baseFS baseCtx
+  , testCase "bind failure unused" $ exactRun baseFS baseCtx
 
-        A.do (fail "oops" >>= log) :*: log "ok"
+      -- when a failing task is bound to a variable that isn't used
+      -- by tasks that come next, the latter still succeed
 
-        (Nothing, [ Logged "ok" ])
+      A.do
+        x <- fail "oops"
+        log "hello"
+
+      (Just (), [ Logged "hello" ])
+
+  , testCase "bind seq failure first" $ exactRun baseFS baseCtx
+
+      -- when a failing task is bound to a variable,
+      -- only the tasks that depend on it will fail
+
+      A.do
+        x <- fail "oops"
+        log x
+        log "hello"
+
+      (Just (), [ Logged "hello" ])
+
+  , testCase "bind seq failure last" $ exactRun baseFS baseCtx
+
+      -- when a failing task is bound to a variable,
+      -- only the tasks that depend on it will fail
+      -- if the last one fails, we get no result
+
+      A.do
+        x <- fail "oops"
+        log "hello"
+        log x
+
+      (Nothing, [ Logged "hello" ])
   ]

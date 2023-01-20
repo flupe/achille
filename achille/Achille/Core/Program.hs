@@ -123,9 +123,7 @@ runProgramIn
   => Env -> Program m a -> PrimTask m (Value a)
 runProgramIn env t = case t of
 
-  Var k -> case lookupEnv env k of
-    Just v  -> pure v
-    Nothing -> fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
+  Var k -> maybe halt pure $ lookupEnv env k
 
   Seq x y -> do
     (cx, cy) <- splitCache
@@ -137,12 +135,10 @@ runProgramIn env t = case t of
   Bind x f -> do
     (cx, cf) <- splitCache
     (vx, cx) <- withCache cx $ runProgramIn env x
-    case vx of
-      Nothing -> joinCache cx cf *> halt
-      Just vx -> do
-        (vy, cf) <- withCache cf $ runProgramIn (bindEnv env vx) f
-        joinCache cx cf
-        forward vy
+    let env' = maybe env (bindEnv env) vx
+    (vy, cf) <- withCache cf $ runProgramIn env' f
+    joinCache cx cf
+    forward vy
     -- TODO(flupe): propagate failure to environment
     --              to allow things that do not depend on the value to be evaluated
 
