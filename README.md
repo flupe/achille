@@ -32,23 +32,3 @@ available [here][archives].
 
 [list]: mailto:~flupe/achille@lists.sr.ht
 [archives]: https://lists.sr.ht/~flupe/achille
-
----
-
-Roadmap to release `0.1.0`:
-
-- [x] Bring back some unit testing infrastructure.
-- [x] `Path`.
-- [ ] `URL`.
-- [ ] Full dynamic dependencies (i.e not only specific files, but also
-      dependencies on glob patterns).
-- [ ] Error-recovery.
-- [ ] Parallelism/Concurrency for free.
-- [ ] Fix implementation of achille-stache by taking the transitive closure of
-      dependencies.
-- [ ] More core recipies like `runCommand`.
-- [ ] Better graph rendering (maybe stop using Graphviz).
-- [ ] Proper logging with verbosity.
-- [ ] Nicer Achille prelude.
-- [ ] Self-tracking with merkle tree.
-  - [ ] Hash pandoc options.
