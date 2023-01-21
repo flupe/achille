@@ -63,6 +63,7 @@ library
                , text                 >= 2.0    && < 2.1
                , time                 >= 1.11.1 && < 1.12
                , transformers         >= 0.5.6  && < 0.7
+               , unliftio             >= 0.2.23 && < 0.3
 
 test-suite test
   default-language: GHC2021

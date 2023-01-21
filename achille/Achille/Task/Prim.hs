@@ -5,6 +5,7 @@ module Achille.Task.Prim
   , module Achille.Context
   , PrimTask
   , runPrimTask
+  , prim
   , lift
   , halt
   , forward
@@ -73,6 +74,9 @@ instance (Monad m, AchilleIO m) => MonadFail (PrimTask m) where
 
 runPrimTask :: PrimTask m a -> Context -> Cache -> m (Maybe a, Cache, DynDeps)
 runPrimTask (PrimTask x) = runRWST $ runMaybeT x
+
+prim :: (Context -> Cache -> m (Maybe a, Cache, DynDeps)) -> PrimTask m a
+prim = PrimTask . MaybeT . RWST
 
 instance (Monad m, AchilleIO m) => AchilleIO (PrimTask m) where
   getModificationTime path =

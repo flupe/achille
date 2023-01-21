@@ -13,6 +13,8 @@ import Data.Set (Set)
 import Data.Map.Strict (Map)
 import GHC.Generics (Generic)
 import System.FilePath.Glob (Pattern)
+import UnliftIO (MonadUnliftIO)
+import UnliftIO.Async as Async
 
 import Data.Set qualified as Set
 import System.FilePath.Glob qualified as Glob
@@ -21,6 +23,7 @@ import Achille.Path
 import Achille.Diffable
 import Achille.IO
 import Achille.Task.Prim
+import Achille.Cache qualified as Cache
 
 
 type PrimRecipe m a b = Value a -> PrimTask m (Value b)
@@ -55,7 +58,7 @@ recipe = Embed
 {-# INLINE recipe #-}
 
 
-runRecipe :: Monad m => Recipe m a b -> PrimRecipe m a b
+runRecipe :: (Monad m, MonadUnliftIO m) => Recipe m a b -> PrimRecipe m a b
 runRecipe r x = case r of
   Id -> pure x
 
@@ -69,20 +72,30 @@ runRecipe r x = case r of
         joinCache cf cg
         forward z
 
-  f :***: g -> do -- TODO(flupe): parallelism
-    let (a, b) = splitValue x
-    (cf, cg) <- splitCache
-    (a, cf) <- withCache cf $ runRecipe f a
-    (b, cg) <- withCache cg $ runRecipe g b
-    joinCache cf cg
-    forward $ joinValue <$> ((,) <$> a <*> b)
+  f :***: g -> prim \ctx cache -> do
+    let (a, b)   = splitValue x
+    let (cf, cg) = Cache.splitCache cache
 
-  f :&&&: g -> do -- TODO(flupe): parallelism
-    (cf, cg) <- splitCache
-    (a, cf) <- withCache cf $ runRecipe f x
-    (b, cg) <- withCache cg $ runRecipe g x
-    joinCache cf cg
-    forward $ joinValue <$> ((,) <$> a <*> b)
+    one <- async $ runPrimTask (runRecipe f a) ctx cf
+    two <- async $ runPrimTask (runRecipe g b) ctx cg
+    ((a, cf, adeps), (b, cg, bdeps)) <- waitBoth one two
+
+    pure ( joinValue <$> ((,) <$> a <*> b)
+         , Cache.joinCache cf cg
+         , adeps <> bdeps
+         )
+
+  f :&&&: g -> prim \ctx cache -> do
+    let (cf, cg) = Cache.splitCache cache
+
+    one <- async $ runPrimTask (runRecipe f x) ctx cf
+    two <- async $ runPrimTask (runRecipe g x) ctx cg
+    ((a, cf, adeps), (b, cg, bdeps)) <- waitBoth one two
+
+    pure ( joinValue <$> ((,) <$> a <*> b)
+         , Cache.joinCache cf cg
+         , adeps <> bdeps
+         )
 
   Exl  -> pure $ fst (splitValue x)
   Exr  -> pure $ snd (splitValue x)

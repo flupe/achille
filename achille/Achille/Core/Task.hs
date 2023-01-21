@@ -30,6 +30,7 @@ import Data.Maybe (fromMaybe)
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
 import System.FilePath.Glob (Pattern)
+import UnliftIO (MonadUnliftIO)
 import Unsafe.Coerce (unsafeCoerce)
 
 import Achille.Core.Recipe
@@ -100,7 +101,7 @@ toProgram t = Prelude.fst $! unTask t 0
 {-# INLINE toProgram #-}
 
 runTask
-  :: (Monad m, MonadFail m, AchilleIO m)
+  :: (Monad m, MonadFail m, MonadUnliftIO m, AchilleIO m)
   => Task m a -> Context -> Cache -> m (Maybe (Value a), Cache, DynDeps)
 runTask (toProgram -> p) = runPrimTask (runProgram p)
 {-# INLINE runTask #-}

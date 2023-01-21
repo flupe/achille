@@ -18,6 +18,7 @@ import Options.Applicative
 import System.Directory (removePathForcibly)
 import System.CPUTime
 import System.IO
+import UnliftIO (MonadUnliftIO)
 
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
@@ -77,7 +78,7 @@ type GlobalCache = (DynDeps, Cache)
 
 -- | Run a task in some context given a configuration.
 runAchille
-  :: (Monad m, MonadFail m, AchilleIO m)
+  :: (Monad m, MonadFail m, MonadUnliftIO m, AchilleIO m)
   => Config
   -> ForceBuild -- ^ Whether to force execution
   -> Verbose    -- ^ Whether to display debug logs

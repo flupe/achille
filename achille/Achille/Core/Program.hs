@@ -9,7 +9,6 @@ import Control.Category
 import Control.Monad (forM)
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
-
 import Data.Binary (Binary)
 import Data.Foldable (fold)
 import Data.Functor ((<&>), ($>))
@@ -22,16 +21,10 @@ import Data.Monoid (All(..))
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
 import GHC.Generics (Generic)
-
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
-
-import Prelude              qualified
-import Data.IntMap.Strict   qualified as IntMap
-import Data.IntSet          qualified as IntSet
-import Data.Map.Strict      qualified as Map
-import System.FilePath      qualified as FP
-import System.FilePath.Glob qualified as Glob
+import UnliftIO (MonadUnliftIO)
+import UnliftIO.Async as Async
 
 import Achille.Config (Config(..))
 import Achille.Context (Context(..))
@@ -42,6 +35,12 @@ import Achille.Path
 import Achille.Task.Prim
 import Achille.Core.Recipe
 
+import Prelude              qualified
+import Data.IntMap.Strict   qualified as IntMap
+import Data.IntSet          qualified as IntSet
+import Data.Map.Strict      qualified as Map
+import System.FilePath      qualified as FP
+import System.FilePath.Glob qualified as Glob
 import Achille.Cache qualified as Cache
 import Achille.IO    qualified as AIO
 
@@ -88,7 +87,7 @@ instance Show (Program m a) where
 
 -- | Run a program given some context and incoming cache.
 runProgram
-  :: (Monad m, MonadFail m, AchilleIO m)
+  :: (Monad m, MonadFail m, MonadUnliftIO m, AchilleIO m)
   => Program m a -> PrimTask m (Value a)
 runProgram = runProgramIn emptyEnv
 {-# INLINE runProgram #-}
@@ -119,7 +118,7 @@ depsClean edits lastTime (getFileDeps -> fdeps) = getAll $ foldMap (All . isClea
         isClean src = maybe False (<= lastTime) (edits Map.!? src)
 
 runProgramIn
-  :: (Monad m, MonadFail m, AchilleIO m)
+  :: (Monad m, MonadFail m, MonadUnliftIO m, AchilleIO m)
   => Env -> Program m a -> PrimTask m (Value a)
 runProgramIn env t = case t of
 
@@ -166,42 +165,48 @@ runProgramIn env t = case t of
         joinCache cx cr
         forward b
 
-  Match pat (t :: Program m b) vars -> do
-    context@Context{..} :: Context <- ask
+  Match pat (t :: Program m b) vars -> prim \ctx@Context{..} cache -> do
     let Config{..} = siteConfig
-    let thepat = FP.normalise (toFilePath currentDir <> "/" <> Glob.decompile pat)
-    let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
-    stored :: Map Path Cache <- fromMaybe Map.empty <$> fromCache
+        thepat = FP.normalise (toFilePath currentDir <> "/" <> Glob.decompile pat)
+        pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
+
+        stored :: Map Path Cache
+        stored = fromMaybe Map.empty (Cache.fromCache cache)
+
     paths <- sort . fmap (normalise . makeRelative contentDir) <$> AIO.glob contentDir pat'
-    res :: [(Maybe (Value b), Cache)] <- forM paths \src -> do
-      mtime <- AIO.getModificationTime (contentDir </> src)
-      let currentDir = takeDirectory src
-      let fileCache = stored Map.!? src
-      case liftA2 (,) fileCache (Cache.fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
-        Just (cache, (x, deps, _))
-          | mtime <= lastTime
-          , not (envChanged env vars)
-          , depsClean updatedFiles lastTime deps ->
-              tell deps $> (Just (value False x), cache)
-        mpast -> do
-          let (oldVal, cache) = case mpast of
-                Just (_, (x, _, cache)) -> (Just x, cache)
-                Nothing                 -> (Nothing, Cache.emptyCache)
-              env' = bindEnv env (value False src)
-          ((t, cache'), deps) <- listen $
-            local (\c -> c { currentDir = currentDir
+
+    res :: [(Maybe (Value b), Cache, DynDeps)] <-
+      forConcurrently paths \src -> do
+        mtime <- AIO.getModificationTime (contentDir </> src)
+        let currentDir = takeDirectory src
+        let fileCache = stored Map.!? src
+        case liftA2 (,) fileCache (Cache.fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
+          Just (cache, (x, deps, _))
+            | mtime <= lastTime
+            , not (envChanged env vars)
+            , depsClean updatedFiles lastTime deps ->
+                pure (Just (value False x), cache, deps)
+          mpast -> do
+            let (old, cache) = case mpast of
+                  Just (_, (x, _, cache)) -> (Just x, cache)
+                  Nothing                 -> (Nothing, Cache.emptyCache)
+                env' = bindEnv env (value False src)
+                ctx' = ctx { currentDir = currentDir
                            , updatedFiles = Map.insert (contentDir </> src) mtime updatedFiles
-                           })
-              $ withCache cache $ runProgramIn env' t
-          case t of
-            Nothing -> pure (Nothing, Cache.emptyCache)
-            Just t  -> pure (Just t, Cache.toCache (theVal t, deps, cache'))
+                           }
+
+            runPrimTask (runProgramIn env' t) ctx cache
+              <&> \(new, cache, deps) ->
+                case new of
+                  Nothing -> (Nothing, Cache.emptyCache, deps)
+                  Just t  -> (Just t, Cache.toCache (theVal t, deps, cache), deps)
           -- pure ( value (Just (theVal t) == oldVal) (theVal t)
           --      , toCache (theVal t, deps, cache')
           --      )
-    let (values, caches) = unzip res
-    tell (dependsOnPattern pat')
-    toCache (Map.fromAscList (zip paths caches))
-    pure (joinValue (catMaybes values))
+    let (values, caches, deps) = unzip3 res
+    pure ( Just (joinValue (catMaybes values))
+         , Cache.toCache (Map.fromAscList (zip paths caches))
+         , dependsOnPattern pat' <> mconcat deps
+         )
 
 {-# INLINE runProgramIn #-}
