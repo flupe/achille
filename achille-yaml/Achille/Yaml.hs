@@ -1,12 +1,15 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, DerivingStrategies #-}
 -- | Some utilies to process YAML files with achille
-module Achille.Yaml where
+module Achille.Yaml
+  ( readYaml
+  , FromJSON
+  ) where
 
 import Prelude hiding ((.), id)
 import Control.Arrow
 import Control.Category
 import Control.Monad (unless)
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, ToJSON)
 import Data.Binary (Binary)
 import Data.Functor (($>))
 import Data.Yaml (decodeEither', prettyPrintParseException)
@@ -20,6 +23,10 @@ import Achille.Recipe (recipe, readByteString)
 import Achille.Task.Prim
 import Achille.Task hiding (fail)
 
+
+-- standalone instances
+instance FromJSON Path
+instance ToJSON Path
 
 -- | Read a JSON-decodable value from a YAML file. The value will be cached
 --   until the underlying file changes.

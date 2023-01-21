@@ -1,5 +1,17 @@
 -- | Some achille utilities to process pandoc documents.
-module Achille.Pandoc where
+module Achille.Pandoc
+  ( readPandoc
+  , readPandocWith
+  , readPandocMeta
+  , readPandocMetaWith
+  , renderPandoc
+  , renderPandocWith
+  , processPandoc
+  , processPandocWith
+  , processPandocMeta
+  , processPandocMetaWith
+  , FromJSON
+  ) where
 
 import Prelude hiding ((.), id)
 import Control.Arrow

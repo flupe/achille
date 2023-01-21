@@ -1,14 +1,10 @@
 module Main where
 
-import Prelude hiding (reverse, take)
-import Data.Function ((&))
-import Data.Binary (Binary(..))
-import Data.Text (Text)
-import Data.Time
-import Data.Aeson
-import GHC.Generics (Generic)
+import Data.Aeson.Types (object)
+import Data.Time (defaultTimeLocale, formatTime)
 
 import Achille as A
+import Achille.Prelude
 import Achille.Pandoc
 import Achille.Stache
 
@@ -29,11 +25,11 @@ newtype Index = Index
 
 data PostItem = PostItem
   { url  :: Text
-  , meta :: PostMeta 
+  , meta :: PostMeta
   } deriving (Eq, Generic, Binary, ToJSON)
 
 instance ToJSON PostMeta where
-  toJSON (PostMeta t d tags) = object 
+  toJSON (PostMeta t d tags) = object
     [ ("title", toJSON t)
     , ("date", toJSON $ formatTime defaultTimeLocale "%a, %e %b" d)
     , ("tags", toJSON tags)
