@@ -13,6 +13,7 @@ executable example
                     , DerivingVia
                     , DuplicateRecordFields
                     , ImportQualifiedPost
+                    , NoImplicitPrelude
                     , OverloadedRecordDot
                     , OverloadedStrings
                     , QualifiedDo

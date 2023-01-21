@@ -12,6 +12,7 @@ executable docs
                     , DerivingVia
                     , DuplicateRecordFields
                     , ImportQualifiedPost
+                    , NoImplicitPrelude
                     , OverloadedRecordDot
                     , OverloadedStrings
                     , QualifiedDo

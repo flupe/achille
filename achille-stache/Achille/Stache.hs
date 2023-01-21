@@ -1,24 +1,31 @@
+{-# LANGUAGE DerivingStrategies, StandaloneDeriving, GeneralizedNewtypeDeriving #-}
 -- | Some achille utilities to load an apply Mustache templates.
-module Achille.Stache 
+module Achille.Stache
   ( loadTemplate
   , loadTemplates
   , applyTemplate
+  , PName
+  , ToJSON(toJSON)
   )
   where
 
 import Prelude hiding ((.), id)
 import Control.Arrow
 import Control.Category
-import Data.Aeson (FromJSON)
+import Data.Aeson (FromJSON, ToJSON(toJSON))
 import Data.Text.Lazy  (Text)
 import Data.Map.Strict (Map)
-import Data.Aeson.Types (ToJSON)
-import Text.Mustache (Template, PName)
+import Text.Mustache (Template, PName(..))
 
 import Achille.IO
 import Achille.Path
 import Achille.Task
 import Achille.Stache.Recipe qualified as R
+
+
+-- some useful standalone instances
+deriving newtype instance FromJSON PName
+deriving newtype instance ToJSON PName
 
 
 -- | Load a Mustache template from file.

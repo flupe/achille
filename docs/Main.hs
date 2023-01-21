@@ -1,25 +1,12 @@
 module Main where
 
-import Prelude hiding (reverse, take, fail)
-import Data.Function      ((&))
-import Data.Binary        (Binary(..))
-import Data.Text          (Text)
-import Data.Maybe         (fromMaybe)
-import Data.Aeson         (FromJSON, ToJSON)
-import Text.Mustache.Type (PName (..))
-import GHC.Generics       (Generic)
+import Data.Maybe (fromMaybe)
 
 import Achille as A
+import Achille.Prelude
 import Achille.Pandoc
-import Achille.Path (Path)
 import Achille.Stache
 import Achille.Yaml
-
--- TODO(flupe): move this to achille-stache?
-deriving newtype instance FromJSON PName
-deriving newtype instance ToJSON PName
-deriving anyclass instance FromJSON Path
-deriving anyclass instance ToJSON Path
 
 data PageMeta = Meta
   { title       :: Text
