@@ -58,6 +58,7 @@ readByteString = recipe "readText" \v -> do
   path     <- (</>) <$> contentDir <*> pure (theVal v)
   lastTime <- lastTime
   time <- getModificationTime path
+  AIO.debug ("Reading " <> show path)
   text <- readFile path
   pure (value (time > lastTime || hasChanged v) text)
 
@@ -67,6 +68,7 @@ readText = recipe "readText" \v -> do
   path     <- (</>) <$> contentDir <*> pure (theVal v)
   lastTime <- lastTime
   time <- getModificationTime path
+  AIO.debug ("Reading " <> show path)
   text <- decodeUtf8 <$> readFile path
   pure (value (time > lastTime || hasChanged v) text)
 

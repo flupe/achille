@@ -13,8 +13,10 @@ import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes)
 import Data.Time (UTCTime(..))
+import Numeric (showFFloat)
 import Options.Applicative
 import System.Directory (removePathForcibly)
+import System.CPUTime
 
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
@@ -36,6 +38,7 @@ import Achille.Context (Context(..))
 import Achille.DynDeps
 import Achille.Task.Prim
 import Achille.Core.Recipe
+
 
 
 -- TODO(flupe): make the CLI interace extensible
@@ -130,9 +133,24 @@ achilleWith cfg@Config{..} t = customExecParser p opts >>= \case
   Clean        -> putStrLn "Deleting all artefacts"
                   *> removePathForcibly (toFilePath cacheFile)
                   *> removePathForcibly (toFilePath outputDir)
-  Build force  -> void $ runAchille cfg force t
+  Build force  -> do
+    start <- getCPUTime
+    ()    <- runAchille cfg force t
+    stop  <- getCPUTime
+    putStrLn $ "Total running time: " <> show (Duration (stop - start))
   Graph output -> outputGraph output (toProgram t)
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
     p    = prefs showHelpOnEmpty
 {-# INLINE achilleWith #-}
+
+
+-- | A duration in picoseconds.
+newtype Duration = Duration Integer
+
+instance Show Duration where
+  show (Duration d) = stab (d * 10) ["ps", "ns", "μs", "ms", "s"]
+    where
+      stab :: Integer -> [String] -> String
+      stab x (unit:us@(_:_)) | x >= 10000 = stab (x `div` 1000) us
+      stab x (unit:_) = showFFloat (Just 1) (fromIntegral x / 10) unit

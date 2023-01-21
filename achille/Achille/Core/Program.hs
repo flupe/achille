@@ -182,18 +182,20 @@ runProgramIn env t = case t of
           | mtime <= lastTime
           , not (envChanged env vars)
           , depsClean updatedFiles lastTime deps ->
-              tell deps
-              $> (Just (value False x), cache)
+              tell deps $> (Just (value False x), cache)
         mpast -> do
           let (oldVal, cache) = case mpast of
                 Just (_, (x, _, cache)) -> (Just x, cache)
                 Nothing                 -> (Nothing, Cache.emptyCache)
               env' = bindEnv env (value False src)
-          --(t, cache') <-
-          local (\c -> c { currentDir = currentDir
-                         , updatedFiles = Map.insert (contentDir </> src) mtime updatedFiles
-                         })
-            $ withCache cache $ runProgramIn env' t
+          ((t, cache'), deps) <- listen $
+            local (\c -> c { currentDir = currentDir
+                           , updatedFiles = Map.insert (contentDir </> src) mtime updatedFiles
+                           })
+              $ withCache cache $ runProgramIn env' t
+          case t of
+            Nothing -> pure (Nothing, Cache.emptyCache)
+            Just t  -> pure (Just t, Cache.toCache (theVal t, deps, cache'))
           -- pure ( value (Just (theVal t) == oldVal) (theVal t)
           --      , toCache (theVal t, deps, cache')
           --      )
