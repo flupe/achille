@@ -40,8 +40,8 @@ library
                  , Achille.IO
                  , Achille.Path
                  , Achille.Recipe
-                 , Achille.Result
                  , Achille.Task
+                 , Achille.Task.Prim
                  , Achille.Writable
   other-modules: Achille.Core.Recipe
                , Achille.Core.Program
@@ -71,6 +71,7 @@ test-suite test
                , Test.Achille.FakeIO
                , Test.Achille.Match
                , Test.Achille.ReadWrite
+               , Test.Achille.Recovery
   build-depends: base                 >= 4.16    && < 4.18
                , binary               >= 0.8.9   && < 0.9
                , binary-instances     >= 1.0.3   && < 1.1

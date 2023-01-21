@@ -22,7 +22,6 @@ import Text.Mustache
 
 import Data.Map.Strict qualified as Map
 
-import Achille.Cache
 import Achille.Context (Context(..))
 import Achille.Config
 import Achille.DynDeps
@@ -30,7 +29,7 @@ import Achille.Diffable
 import Achille.IO
 import Achille.Path
 import Achille.Recipe
-import Achille.Result
+import Achille.Task.Prim
 
 -- standalone instances
 deriving instance Binary PName
@@ -44,19 +43,20 @@ unlessM b x = b >>= \b -> unless b x
 
 -- TODO(flupe): recursively fetch (and cache) partials?
 loadTemplate :: Recipe IO Path Template
-loadTemplate = recipe "loadTemplate" \cache vsrc -> do
+loadTemplate = recipe "loadTemplate" \vsrc -> do
   Context{..} <- getContext
   let Config{..} = siteConfig
   let path = contentDir </> theVal vsrc
   unlessM (doesFileExist path) $ fail ("Could not find template file " <> show path)
   mtime <- getModificationTime path
   setDeps (dependsOnFile path)
-  case fromCache cache of
+  fromCache >>= \case
     Just (t :: Template) | mtime <= lastTime, not (hasChanged vsrc) ->
-      pure (value False t, cache)
+      pure (value False t)
     mc -> do
       t <- lift $ compileMustacheFile (toFilePath path) -- TODO(flupe): handle parser exception gracefully
-      pure (value (Just t /= mc) t, toCache t)
+      toCache t
+      pure (value (Just t /= mc) t)
 
 tToNode :: Template -> [Node]
 tToNode t = templateCache t Map.! templateActual t
@@ -65,11 +65,11 @@ tToNode t = templateCache t Map.! templateActual t
 
 -- | Load all templates from the input directory.
 loadTemplates :: Recipe IO Path (Map PName Template)
-loadTemplates = recipe "loadTemplates" \cache vdir -> do
+loadTemplates = recipe "loadTemplates" \vdir -> do
   Context{..} <- getContext
   let Config{..} = siteConfig
   let dir = contentDir </> theVal vdir
-  let stored :: Map PName Template = fromMaybe Map.empty (fromCache cache)
+  stored :: Map PName Template <- fromMaybe Map.empty <$> fromCache
   unlessM (doesDirExist dir) $ fail ("Could not find directory " <> show dir)
   files <- fmap (dir </>) . filter ((== ".mustache") . takeExtension) <$> listDir dir
   templates :: [Value Template] <- forM files \src -> do
@@ -85,7 +85,8 @@ loadTemplates = recipe "loadTemplates" \cache vdir -> do
     tps' = tToNode . theVal <$> tps
     tps'' = (\(Value t c i) -> Value t { templateCache = tps' } c i) <$> tps
   setDeps (dependsOnFiles files)
-  pure (joinValue tps'', toCache (theVal <$> tps))
+  toCache (theVal <$> tps)
+  pure (joinValue tps'')
 
-applyTemplate :: (Applicative m, ToJSON a) => Recipe m (Template, a) Text
+applyTemplate :: (Monad m, ToJSON a) => Recipe m (Template, a) Text
 applyTemplate = arr \(t, x) -> renderMustache t (toJSON x)

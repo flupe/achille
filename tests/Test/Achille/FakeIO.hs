@@ -2,11 +2,12 @@
 
 module Test.Achille.FakeIO where
 
-import Data.Bifunctor (bimap)
+import Data.Bifunctor (bimap, first)
 import Data.Functor ((<&>))
 import Data.Map.Strict (Map)
 import Data.Maybe
 import Data.Time.Clock (UTCTime(..))
+import Control.Monad (join)
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.Writer
 
@@ -23,8 +24,8 @@ import Achille.Cache (Cache, emptyCache)
 import Achille.Diffable (Value(theVal))
 import Achille.Path
 import Achille.Context (Context)
-import Achille.Result
 import Achille.Task (Task, runTask)
+import Achille.Task.Prim
 import Achille.IO hiding ()
 
 -- | Poor man's glob. Inefficient, but that's not the point.
@@ -45,6 +46,7 @@ data FakeIO a where
     Glob                :: Path -> Glob.Pattern -> FakeIO [Path]
     GetModificationTime :: Path -> FakeIO UTCTime
     Fail                :: String -> FakeIO a
+    Log                 :: String -> FakeIO ()
 
     SeqAp               :: FakeIO (a -> b) -> FakeIO a -> FakeIO b
     Fmap                :: (a -> b) -> FakeIO a -> FakeIO b
@@ -65,7 +67,8 @@ instance AchilleIO FakeIO where
     doesFileExist       = DoesFileExist
     doesDirExist        = DoesDirExist
     callCommand         = CallCommand
-    log s               = pure ()
+    log s               = Log s
+    debug s             = pure ()
     glob                = Glob
     listDir             = undefined
     readCommand         = undefined
@@ -82,6 +85,7 @@ data Actions
     | CopiedFile Path Path
     | CalledCommand String
     | Failed String
+    | Logged String
     deriving (Eq, Show)
 
 data File = File
@@ -137,6 +141,8 @@ retrieveActions t fs = runWriter (retrieve t)
         Nothing -> pure Nothing
         Just x' -> retrieve (f x')
 
+    retrieve (Log s) = writer (Just (), [Logged s])
+
 exactRun :: (Show b, Eq b)
   => FileSystem
   -> Context
@@ -144,6 +150,6 @@ exactRun :: (Show b, Eq b)
   -> (Maybe b, [Actions])
   -> Assertion
 exactRun fs ctx t =
-    let fakeIO = runTask t ctx emptyCache <&> \(v, x, y) -> theVal v
+    let fakeIO = runTask t ctx emptyCache <&> \(v, x, y) -> v
         trace = retrieveActions fakeIO fs
-    in (trace @?=)
+    in (first (fmap theVal . join) trace @?=)

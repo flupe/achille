@@ -32,6 +32,6 @@ loadTemplates = apply R.loadTemplates
 
 -- | Apply a Mustache template to a value.
 applyTemplate
-  :: (Applicative m, ToJSON a)
+  :: (Monad m, ToJSON a)
   => Task m Template -> Task m a -> Task m Text
 applyTemplate t x = apply R.applyTemplate (t :*: x)

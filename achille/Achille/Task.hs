@@ -1,9 +1,11 @@
-{-# LANGUAGE GADTs, RecordWildCards, ViewPatterns, PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns, OverloadedStrings, PatternSynonyms #-}
 
 module Achille.Task 
   ( module Achille.Core.Task
   , pattern (:*:)
   , toURL
+  , log
+  , debug
   , write
   , copy
   , (-<.>)
@@ -24,7 +26,7 @@ module Achille.Task
   ) where
 
 import Prelude
-  hiding (fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
+  hiding (log, fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
 import Control.Applicative (Applicative(liftA2))
 import Control.Category
 import Control.Arrow (arr)
@@ -76,6 +78,12 @@ split p = (fst p, snd p)
 toURL :: Monad m => Task m Path -> Task m Text
 toURL = apply Recipe.toURL
 
+log :: (AchilleIO m, Monad m) => Task m Text -> Task m ()
+log = apply Recipe.log
+
+debug :: (AchilleIO m, Monad m) => Task m Text -> Task m ()
+debug = apply Recipe.debug
+
 write
   :: (AchilleIO m, Monad m, Writable m a)
   => Task m Path -> Task m a -> Task m Text
@@ -86,7 +94,7 @@ copy
   => Task m Path -> Task m Text
 copy = apply Recipe.copy
 
-(-<.>) :: Applicative m => Task m Path -> Task m String -> Task m Path
+(-<.>) :: Monad m => Task m Path -> Task m String -> Task m Path
 path -<.> ext = liftA2 (Path.-<.>) path ext
 
 readText :: (AchilleIO m, Monad m) => Task m Path -> Task m Text
@@ -99,28 +107,28 @@ readText = apply Recipe.readText
 -- Each of them was implemented so that information change of input gets
 -- propagated and preserved.
 
-map :: Applicative m => (a -> b) -> Task m [a] -> Task m [b]
+map :: Monad m => (a -> b) -> Task m [a] -> Task m [b]
 map f = apply (Recipe.map f)
 
 -- | Sort a list using the prelude @sort@.
-reverse :: Applicative m => Task m [a] -> Task m [a]
+reverse :: Monad m => Task m [a] -> Task m [a]
 reverse = apply Recipe.reverse
 
 -- | Sort a list using the prelude @sort@.
-sort :: (Applicative m, Ord a) => Task m [a] -> Task m [a]
+sort :: (Monad m, Ord a) => Task m [a] -> Task m [a]
 sort = apply Recipe.sort
 
 -- | Sort a list using the prelude @sort@.
 -- Crucially this takes care of tracking change information in the list.
-sortOn :: (Applicative m, Ord b) => (a -> b) -> Task m [a] -> Task m [a]
+sortOn :: (Monad m, Ord b) => (a -> b) -> Task m [a] -> Task m [a]
 sortOn f = apply (Recipe.sortOn f)
 
 -- | Return the prefix of length @n@ of the input list.
-take :: (Applicative m) => Int -> Task m [a] -> Task m [a]
+take :: (Monad m) => Int -> Task m [a] -> Task m [a]
 take n = apply (Recipe.take n)
 
 -- | Drop the first @n@ elements of the input list.
-drop :: Applicative m => Int -> Task m [a] -> Task m [a]
+drop :: Monad m => Int -> Task m [a] -> Task m [a]
 drop n = apply (Recipe.drop n)
 
 
@@ -131,5 +139,5 @@ drop n = apply (Recipe.drop n)
 -- propagated and preserved.
 
 infixl 9 !
-(!) :: (Applicative m, Ord k) => Task m (Map k a) -> Task m k -> Task m a
+(!) :: (Monad m, Ord k, AchilleIO m) => Task m (Map k a) -> Task m k -> Task m a
 (!) m k = apply (Recipe.!) (m :*: k)

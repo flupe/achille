@@ -18,13 +18,10 @@ module Achille.Core.Task
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
 
 import Control.Category
-import Control.Monad (forM)
-import Control.Monad.Reader.Class
+import Control.Monad.Reader.Class (reader)
 import Control.Applicative (Alternative, empty, liftA2)
 import Control.Arrow
-
 import Data.Binary (Binary)
-import Data.Functor ((<&>))
 import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
 import Data.List (sort)
@@ -32,28 +29,23 @@ import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe)
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
-
 import System.FilePath.Glob (Pattern)
-import System.FilePath qualified as FP
 import Unsafe.Coerce (unsafeCoerce)
+
+import Achille.Core.Recipe
+import Achille.Core.Program
+import Achille.Diffable as Diffable
+import Achille.DynDeps (DynDeps)
+import Achille.Path
+import Achille.Task.Prim
+import Achille.IO
 
 import Prelude            qualified
 import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet        qualified as IntSet
 import Data.Map.Strict    qualified as Map
-
-import Achille.Cache
-import Achille.Context (Context)
-import Achille.Diffable as Diffable
-import Achille.DynDeps (DynDeps)
-import Achille.Path
-import Achille.Result
-import Achille.IO
-
-import Achille.Core.Recipe
-import Achille.Core.Program
-
-import Achille.Context qualified as Ctx
+import System.FilePath    qualified as FP
+import Achille.Context    qualified as Ctx
 
 
 -- NOTE(flupe): maybe we should *NOT* make all the applications strict.
@@ -62,11 +54,11 @@ import Achille.Context qualified as Ctx
 -- | Core abstraction for build tasks.
 newtype Task m a = T { unTask :: Int -> (Program m a, IntSet) }
 
-instance Applicative m => Functor (Task m) where
+instance Monad m => Functor (Task m) where
   fmap f = apply (arr f)
   {-# INLINE fmap #-}
 
-instance Applicative m => Applicative (Task m) where
+instance Monad m => Applicative (Task m) where
   -- NOTE(flupe): values lifted with @pure@ are considered to always be old.
   --              maybe we want to make them always new, but a choice has to be made.
   --              over or under approximating incrementality.
@@ -76,7 +68,7 @@ instance Applicative m => Applicative (Task m) where
   liftA2 f x y = apply (arr (uncurry f)) (pair x y)
   {-# INLINE liftA2 #-}
 
-instance {-# OVERLAPPABLE #-} (Applicative m, IsString a) => IsString (Task m a) where
+instance {-# OVERLAPPABLE #-} (Monad m, IsString a) => IsString (Task m a) where
   fromString = pure . fromString
   {-# INLINE fromString #-}
 
@@ -87,11 +79,12 @@ instance {-# OVERLAPPING #-} Monad m => IsString (Task m Path) where
   fromString p = apply rec (pure ())
     where
       rec :: Recipe m () Path
-      rec = recipe "Achille.Core.Task.toPath" \cache _ -> do
+      rec = recipe "Achille.Core.Task.toPath" \_ -> do
         curr <- reader Ctx.currentDir
         let path :: Path = normalise (curr </> fromString p)
-        let same = fromCache cache == Just path
-        pure (value (not same) path, toCache path)
+        same <- (Just path ==) <$> fromCache
+        toCache path
+        pure (value (not same) path)
 
 -- instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Pattern) where
 --   fromString p = apply rec (pure ())
@@ -108,10 +101,8 @@ toProgram t = Prelude.fst $! unTask t 0
 
 runTask
   :: (Monad m, MonadFail m, AchilleIO m)
-  => Task m a -> Context -> Cache -> m (Value a, DynDeps, Cache)
-runTask (toProgram -> p) ctx cache = do
-  ((v, c), deps) <- runResult (runProgram p cache) ctx
-  pure (v, deps, c)
+  => Task m a -> Context -> Cache -> m (Maybe (Value a), Cache, DynDeps)
+runTask (toProgram -> p) = runPrimTask (runProgram p)
 {-# INLINE runTask #-}
 
 -- | Sequence two tasks, ignoring the result of the first.

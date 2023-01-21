@@ -1,7 +1,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 module Achille.Core.Program where
 
-import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
+import Prelude hiding ((.), id, seq, (>>=), (>>), fst, snd)
 
 import Control.Applicative (Alternative, empty, liftA2)
 import Control.Arrow
@@ -17,7 +17,7 @@ import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
 import Data.List (sort)
 import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
 import Data.Monoid (All(..))
 import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
@@ -33,17 +33,17 @@ import Data.Map.Strict      qualified as Map
 import System.FilePath      qualified as FP
 import System.FilePath.Glob qualified as Glob
 
-import Achille.Cache
-import Achille.Config
+import Achille.Config (Config(..))
 import Achille.Context (Context(..))
 import Achille.Diffable
 import Achille.DynDeps (DynDeps, getFileDeps, dependsOnPattern)
 import Achille.IO (AchilleIO)
 import Achille.Path
-import Achille.Result
+import Achille.Task.Prim
 import Achille.Core.Recipe
 
-import Achille.IO qualified as AIO
+import Achille.Cache qualified as Cache
+import Achille.IO    qualified as AIO
 
 
 -- | @Program m a@ is the internal representaion of tasks in achille.
@@ -89,7 +89,7 @@ instance Show (Program m a) where
 -- | Run a program given some context and incoming cache.
 runProgram
   :: (Monad m, MonadFail m, AchilleIO m)
-  => Program m a -> Cache -> Result m (Value a, Cache)
+  => Program m a -> PrimTask m (Value a)
 runProgram = runProgramIn emptyEnv
 {-# INLINE runProgram #-}
 
@@ -120,76 +120,88 @@ depsClean edits lastTime (getFileDeps -> fdeps) = getAll $ foldMap (All . isClea
 
 runProgramIn
   :: (Monad m, MonadFail m, AchilleIO m)
-  => Env -> Program m a -> Cache -> Result m (Value a, Cache)
-runProgramIn env t cache = case t of
+  => Env -> Program m a -> PrimTask m (Value a)
+runProgramIn env t = case t of
 
-  Var k -> case lookupEnv env k of
-    Just v  -> pure (v, cache)
-    Nothing -> Prelude.fail $ "Variable " <> show k <> " out of scope. This is a bug, please report!"
+  Var k -> maybe halt pure $ lookupEnv env k
 
   Seq x y -> do
-    let (cx, cy) = splitCache cache
-    (_,  cx) <- runProgramIn env x cx
-    (vy, cy) <- runProgramIn env y cy
-    pure (vy, joinCache cx cy)
+    (cx, cy) <- splitCache
+    (_,  cx) <- withCache cx $ runProgramIn env x
+    (vy, cy) <- withCache cy $ runProgramIn env y
+    joinCache cx cy
+    forward vy
 
   Bind x f -> do
-    let (cx, cf) = splitCache cache
-    (vx, cx) <- runProgramIn env x cx
-    (vy, cf) <- runProgramIn (bindEnv env vx) f cf
-    pure (vy, joinCache cx cf)
+    (cx, cf) <- splitCache
+    (vx, cx) <- withCache cx $ runProgramIn env x
+    let env' = maybe env (bindEnv env) vx
+    (vy, cf) <- withCache cf $ runProgramIn env' f
+    joinCache cx cf
+    forward vy
+    -- TODO(flupe): propagate failure to environment
+    --              to allow things that do not depend on the value to be evaluated
 
-  -- TODO(flupe): error-recovery and propagation
-  Fail s -> Prelude.fail s
+  Fail s -> fail s
   --
   -- TODO(flupe): does this have to be a primitive of Program? what about lists? maps? 
   --              this is almost identical to Seq
   -- TODO(flupe): parallelism
   Pair x y -> do
-    let (cx, cy) = splitCache cache
-    (a, cx) <- runProgramIn env x cx
-    (b, cy) <- runProgramIn env y cy
-    pure (joinValue (a, b), joinCache cx cy)
+    (cx, cy) <- splitCache
+    (a, cx) <- withCache cx $ runProgramIn env x
+    (b, cy) <- withCache cy $ runProgramIn env y
+    joinCache cx cy
+    forward (joinValue <$> ((,) <$> a <*> b))
 
-  Val v -> pure (v, cache)
+  Val v -> pure v
 
   Apply r x -> do
-    let (cx, cr) = splitCache cache
-    (a, cx) <- runProgramIn env x cx
-    (b, cr) <- runRecipe r cr a
-    pure (b, joinCache cx cr)
+    (cx, cr) <- splitCache
+    (a, cx) <- withCache cx $ runProgramIn env x
+    case a of
+      Nothing -> joinCache cx cr *> halt
+      Just a -> do
+        (b, cr) <- withCache cr $ runRecipe r a
+        joinCache cx cr
+        forward b
 
   Match pat (t :: Program m b) vars -> do
     context@Context{..} :: Context <- ask
     let Config{..} = siteConfig
     let thepat = FP.normalise (toFilePath currentDir <> "/" <> Glob.decompile pat)
     let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
-    let stored :: Map Path Cache = fromMaybe Map.empty (fromCache cache)
+    stored :: Map Path Cache <- fromMaybe Map.empty <$> fromCache
     paths <- sort . fmap (normalise . makeRelative contentDir) <$> AIO.glob contentDir pat'
-    res :: [(Value b, Cache)] <- forM paths \src -> do
+    res :: [(Maybe (Value b), Cache)] <- forM paths \src -> do
       mtime <- AIO.getModificationTime (contentDir </> src)
       let currentDir = takeDirectory src
       let fileCache = stored Map.!? src
-      case liftA2 (,) fileCache (fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
+      case liftA2 (,) fileCache (Cache.fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
         Just (cache, (x, deps, _))
           | mtime <= lastTime
           , not (envChanged env vars)
-          , depsClean updatedFiles lastTime deps -> tell deps $> (value False x, cache)
+          , depsClean updatedFiles lastTime deps ->
+              tell deps $> (Just (value False x), cache)
         mpast -> do
           let (oldVal, cache) = case mpast of
                 Just (_, (x, _, cache)) -> (Just x, cache)
-                Nothing                 -> (Nothing, emptyCache)
+                Nothing                 -> (Nothing, Cache.emptyCache)
               env' = bindEnv env (value False src)
           ((t, cache'), deps) <- listen $
             local (\c -> c { currentDir = currentDir
                            , updatedFiles = Map.insert (contentDir </> src) mtime updatedFiles
                            })
-            $ runProgramIn env' t cache
-          pure ( value (Just (theVal t) == oldVal) (theVal t)
-               , toCache (theVal t, deps, cache')
-               )
+              $ withCache cache $ runProgramIn env' t
+          case t of
+            Nothing -> pure (Nothing, Cache.emptyCache)
+            Just t  -> pure (Just t, Cache.toCache (theVal t, deps, cache'))
+          -- pure ( value (Just (theVal t) == oldVal) (theVal t)
+          --      , toCache (theVal t, deps, cache')
+          --      )
     let (values, caches) = unzip res
     tell (dependsOnPattern pat')
-    pure (joinValue values, toCache (Map.fromAscList (zip paths caches)))
+    toCache (Map.fromAscList (zip paths caches))
+    pure (joinValue (catMaybes values))
 
 {-# INLINE runProgramIn #-}

@@ -24,7 +24,7 @@ import Achille.Diffable
 import Achille.IO
 import Achille.Path
 import Achille.Recipe
-import Achille.Result
+import Achille.Task.Prim
 
 -- TODO(flupe): caching/hashing of pandoc options
 
@@ -44,20 +44,20 @@ readPandocWith
   :: (MonadFail m, AchilleIO m)
   => ReaderOptions -> Recipe m Path Pandoc
 readPandocWith ropts = id &&& readText >>>
-  recipe "readPandoc" \cache v -> do
+  recipe "readPandoc" \v -> do
     let (vsrc, vtxt) = splitValue v
     let ext = takeExtension $ theVal vsrc
     reader <- getReader ext
     case runPure (reader ropts $ theVal vtxt) of
       Left err  -> fail $ unpack $ renderError err
-      Right doc -> pure (value (hasChanged vtxt) doc, cache)
+      Right doc -> pure (value (hasChanged vtxt) doc)
 
 -- | Read a pandoc document and its frontmatter metadata from path, using provided reader options.
 readPandocMetaWith
   :: (MonadFail m, AchilleIO m, FromJSON a)
   => ReaderOptions -> Recipe m Path (a, Pandoc)
 readPandocMetaWith ropts = id &&& readByteString >>>
-  recipe "readPandocMeta" \cache v -> do
+  recipe "readPandocMeta" \v -> do
     let (vsrc, vbs) = splitValue v
         ext = takeExtension $ theVal vsrc
     reader <- getReader ext
@@ -65,14 +65,14 @@ readPandocMetaWith ropts = id &&& readByteString >>>
       Done rest meta ->
         case runPure (reader ropts $ decodeUtf8 rest) of
           Left err -> fail $ show (theVal vsrc) <> ": " <> unpack (renderError err)
-          Right doc -> pure (value (hasChanged v) (meta, doc), cache)
+          Right doc -> pure (value (hasChanged v) (meta, doc))
       -- TODO(flupe): better error-reporting
       -- TODO(flupe): cache front-matter?
       _ -> fail $ show (theVal vsrc) <> ": Could not parse YAML frontmatter"
 
 -- | Convert pandoc document to text, using provided writer options.
-renderPandocWith :: MonadFail m => WriterOptions -> Recipe m Pandoc Text
-renderPandocWith wopts = recipe "renderPandoc" \cache vdoc -> do
+renderPandocWith :: (AchilleIO m, MonadFail m) => WriterOptions -> Recipe m Pandoc Text
+renderPandocWith wopts = recipe "renderPandoc" \vdoc -> do
   case runPure (writeHtml5String wopts $ theVal vdoc) of
     Left err   -> fail $ unpack $ renderError err
-    Right html -> pure (value (hasChanged vdoc) html, cache)
+    Right html -> pure (value (hasChanged vdoc) html)
