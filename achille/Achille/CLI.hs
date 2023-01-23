@@ -16,7 +16,7 @@ import Data.Time (UTCTime(..))
 import Numeric (showFFloat)
 import Options.Applicative
 import System.Directory (removePathForcibly)
-import System.CPUTime
+import System.Clock as Clock
 import System.IO
 import UnliftIO (MonadUnliftIO)
 
@@ -141,10 +141,10 @@ achilleWith cfg@Config{..} t = customExecParser p opts >>= \case
                   *> removePathForcibly (toFilePath outputDir)
   Build force verbose -> do
     colorful <- hIsTerminalDevice stdout
-    start <- getCPUTime
+    start <- Clock.getTime Monotonic
     ()    <- runAchille cfg force verbose colorful t
-    stop  <- getCPUTime
-    putStrLn $ "All done! (" <> show (Duration (stop - start)) <> ")"
+    stop  <- Clock.getTime Monotonic
+    putStrLn $ "All done! (" <> show (Duration (toNanoSecs $ diffTimeSpec stop start)) <> ")"
   Graph output -> outputGraph output (toProgram t)
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
@@ -156,7 +156,7 @@ achilleWith cfg@Config{..} t = customExecParser p opts >>= \case
 newtype Duration = Duration Integer
 
 instance Show Duration where
-  show (Duration d) = stab (d * 10) ["ps", "ns", "μs", "ms", "s"]
+  show (Duration d) = stab (d * 10) ["ns", "μs", "ms", "s"]
     where
       stab :: Integer -> [String] -> String
       stab x (unit:us@(_:_)) | x >= 10000 = stab (x `div` 1000) us
