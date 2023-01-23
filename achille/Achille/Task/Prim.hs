@@ -89,7 +89,6 @@ instance (Monad m, AchilleIO m) => AchilleIO (PrimTask m) where
   doesDirExist path = lift (AIO.doesDirExist path) -- TODO(flupe): check semantics of mtime of dir
   listDir = lift . AIO.listDir
   callCommand = lift . AIO.callCommand
-  withColor = reader Ctx.colorful
   log = lift . AIO.log
   readCommand cmd args = lift (AIO.readCommand cmd args)
   glob root pat = lift (AIO.glob root pat) <* tell (dependsOnPattern pat)

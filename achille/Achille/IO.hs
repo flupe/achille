@@ -39,8 +39,6 @@ class AchilleIO m where
     callCommand :: String -> m ()
     -- | Run a shell command in a new process.
     readCommand :: String -> [String] -> m String
-    -- | Should colors be used in logs?
-    withColor :: m Bool
     -- | Log some text to stdout, followed by a newline.
     log :: Text -> m ()
 
@@ -68,7 +66,6 @@ instance AchilleIO IO where
     listDir              = fmap (map fromString) . Directory.listDirectory . toFilePath
     callCommand          = Process.callCommand
     readCommand cmd args = Process.readProcess cmd args []
-    withColor            = SIO.hIsTerminalDevice SIO.stdout
     log                  = Text.putStrLn
     glob dir pattern     = map fromString <$> Glob.globDir1 pattern (toFilePath dir)
     getModificationTime  = Directory.getModificationTime . toFilePath
