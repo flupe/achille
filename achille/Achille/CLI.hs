@@ -1,12 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | CLI for achille recipes.
-module Achille.CLI 
+module Achille.CLI
   ( achille
   , achilleWith
   )
   where
 
-import Control.Monad (forM)
+import Control.Monad (forM, when)
 import Data.Binary (encode)
 import Data.Functor (void)
 import Data.List (nub)
@@ -17,6 +17,7 @@ import Numeric (showFFloat)
 import Options.Applicative
 import System.Directory (removePathForcibly)
 import System.CPUTime
+import System.IO
 
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
@@ -44,20 +45,24 @@ import Achille.Core.Recipe
 -- TODO(flupe): make the CLI interace extensible
 -- TODO(flupe): add ignore list
 
+type Verbose    = Bool
+type ForceBuild = Bool
+type InColor    = Bool
 
 -- | CLI commands.
 data AchilleCommand
-    = Build Bool             -- ^ Build the site once.
-    | Deploy                 -- ^ Deploy to the server.
-    | Clean                  -- ^ Delete all artefacts.
-    | Graph (Maybe FilePath) -- ^ Output graph of generator.
+    = Build ForceBuild Verbose -- ^ Build the site once.
+    | Deploy                   -- ^ Deploy to the server.
+    | Clean                    -- ^ Delete all artefacts.
+    | Graph (Maybe FilePath)   -- ^ Output graph of generator.
     deriving (Eq, Show)
 
 
 -- | CLI parser.
 achilleCLI :: Parser AchilleCommand
 achilleCLI = subparser $
-     command "build"  (info (Build <$> switch (long "force" <> short 'f')) 
+     command "build"  (info (Build <$> switch (long "force" <> short 'f')
+                                   <*> switch (long "verbose" <> short 'v'))
                             (progDesc "Build the site"))
   <> command "deploy" (info (pure Deploy) 
                             (progDesc "Deploy site"))
@@ -74,14 +79,16 @@ type GlobalCache = (DynDeps, Cache)
 runAchille
   :: (Monad m, MonadFail m, AchilleIO m)
   => Config
-  -> Bool -- ^ Whether to force execution
+  -> ForceBuild -- ^ Whether to force execution
+  -> Verbose    -- ^ Whether to display debug logs
+  -> InColor
   -> Task m a -> m ()
-runAchille cfg@Config{..} force t = do
+runAchille cfg@Config{..} force verbose colorful t = do
   -- 1. try to retrieve cache
   ((deps, cache), hasCache, lastTime) :: (GlobalCache, Bool, lastTime) <- do
     hasCache <- doesFileExist cacheFile
     if hasCache && not force then do
-      AIO.log "Loading cache…"
+      when verbose $ AIO.log "Loading cache…"
       (,,) <$> (Binary.decode . LBS.fromStrict <$> AIO.readFile cacheFile)
            <*> pure True
            <*> AIO.getModificationTime cacheFile
@@ -106,19 +113,17 @@ runAchille cfg@Config{..} force t = do
         , updatedFiles = updates
         , cleanBuild   = not hasCache
         , siteConfig   = cfg
+        , verbose      = verbose
+        , colorful     = colorful
         }
 
   -- 4. run task in context using cache
   (_, cache', deps) <- runTask t ctx cache
 
-  AIO.log "Reported dynamic dependencies: "
-  AIO.log $ show deps
-
   -- 5. write new cache to file
-  AIO.log "Saving cache…"
+  when verbose $ AIO.log "Saving cache…"
   AIO.writeFileLazy cacheFile $ Binary.encode ((deps, cache') :: GlobalCache)
 
-  AIO.log "All done!"
 
 -- | Top-level runner for achille tasks. Provides a CLI with several commands.
 achille :: Task IO a -> IO ()
@@ -133,11 +138,12 @@ achilleWith cfg@Config{..} t = customExecParser p opts >>= \case
   Clean        -> putStrLn "Deleting all artefacts"
                   *> removePathForcibly (toFilePath cacheFile)
                   *> removePathForcibly (toFilePath outputDir)
-  Build force  -> do
+  Build force verbose -> do
+    colorful <- hIsTerminalDevice stdout
     start <- getCPUTime
-    ()    <- runAchille cfg force t
+    ()    <- runAchille cfg force verbose colorful t
     stop  <- getCPUTime
-    putStrLn $ "Total running time: " <> show (Duration (stop - start))
+    putStrLn $ "All done! (" <> show (Duration (stop - start)) <> ")"
   Graph output -> outputGraph output (toProgram t)
   where
     opts = info (achilleCLI <**> helper) $ fullDesc <> header description
@@ -153,4 +159,4 @@ instance Show Duration where
     where
       stab :: Integer -> [String] -> String
       stab x (unit:us@(_:_)) | x >= 10000 = stab (x `div` 1000) us
-      stab x (unit:_) = showFFloat (Just 1) (fromIntegral x / 10) unit
+      stab x (unit:_) = showFFloat (Just 1) (fromIntegral x / 10) (" " <> unit)

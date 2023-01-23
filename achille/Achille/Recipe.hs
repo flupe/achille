@@ -58,7 +58,7 @@ readByteString = recipe "readText" \v -> do
   path     <- (</>) <$> contentDir <*> pure (theVal v)
   lastTime <- lastTime
   time <- getModificationTime path
-  AIO.debug ("Reading " <> show path)
+  logInfo ("Reading " <> pack (toFilePath path))
   text <- readFile path
   pure (value (time > lastTime || hasChanged v) text)
 
@@ -68,17 +68,17 @@ readText = recipe "readText" \v -> do
   path     <- (</>) <$> contentDir <*> pure (theVal v)
   lastTime <- lastTime
   time <- getModificationTime path
-  AIO.debug ("Reading " <> show path)
+  logInfo ("Reading " <> pack (toFilePath path))
   text <- decodeUtf8 <$> readFile path
   pure (value (time > lastTime || hasChanged v) text)
 
 -- | Print a message to stdout.
 log :: (Monad m, AchilleIO m) => Recipe m Text ()
-log = recipe "debug" \v -> AIO.log (unpack $ theVal v) $> unit
+log = recipe "log" \v -> AIO.log (theVal v) $> unit
 
 -- | Print a /debug/ message to stdout.
 debug :: (Monad m, AchilleIO m) => Recipe m Text ()
-debug = recipe "debug" \v -> AIO.debug (unpack $ theVal v) $> unit
+debug = recipe "debug" \v -> logDebug (theVal v) $> unit
 
 -- | Convert a path to a proper absolute URL, including the site prefix.
 toURL :: Monad m => Recipe m Path Text
@@ -96,7 +96,7 @@ write = toURL <<< recipe "write" \v -> do
   cleanBuild <- reader Ctx.cleanBuild
   -- NOTE(flupe): maybe also when the output file is no longer here
   when (cleanBuild || hasChanged v)
-    $  AIO.debug ("Writing " <> show path)
+    $  logInfo ("Writing " <> pack (toFilePath path))
     *> lift (Writable.write path (theVal vx))
   pure vsrc
 
@@ -111,7 +111,8 @@ copy = toURL <<< recipe "copy" \vsrc -> do
   -- TODO(flupe): check if output file is there?
   time <- AIO.getModificationTime ipath
   when (cleanBuild || hasChanged vsrc || time > lastTime) $
-    AIO.debug ("Copying " <> show ipath) *> AIO.copyFile ipath opath
+    logInfo ("Copying " <> pack (toFilePath ipath))
+    *> AIO.copyFile ipath opath
   tell $ dependsOnFile ipath
   pure vsrc
 

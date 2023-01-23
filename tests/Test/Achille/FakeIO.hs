@@ -11,6 +11,7 @@ import Control.Monad (join)
 import Control.Monad.Fail (MonadFail, fail)
 import Control.Monad.Writer
 
+import Data.Text (Text)
 import Data.ByteString      qualified as BS
 import Data.ByteString.Lazy qualified as LBS
 import System.Directory     qualified as Directory
@@ -46,7 +47,7 @@ data FakeIO a where
     Glob                :: Path -> Glob.Pattern -> FakeIO [Path]
     GetModificationTime :: Path -> FakeIO UTCTime
     Fail                :: String -> FakeIO a
-    Log                 :: String -> FakeIO ()
+    Log                 :: Text -> FakeIO ()
 
     SeqAp               :: FakeIO (a -> b) -> FakeIO a -> FakeIO b
     Fmap                :: (a -> b) -> FakeIO a -> FakeIO b
@@ -67,8 +68,8 @@ instance AchilleIO FakeIO where
     doesFileExist       = DoesFileExist
     doesDirExist        = DoesDirExist
     callCommand         = CallCommand
+    withColor           = pure False
     log s               = Log s
-    debug s             = pure ()
     glob                = Glob
     listDir             = undefined
     readCommand         = undefined
@@ -85,7 +86,7 @@ data Actions
     | CopiedFile Path Path
     | CalledCommand String
     | Failed String
-    | Logged String
+    | Logged Text
     deriving (Eq, Show)
 
 data File = File

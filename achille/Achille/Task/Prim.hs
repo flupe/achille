@@ -1,4 +1,4 @@
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingStrategies, OverloadedStrings #-}
 module Achille.Task.Prim
   (  module Achille.Cache
   , module Achille.Config
@@ -20,11 +20,15 @@ module Achille.Task.Prim
   , outputDir
   , updatedFiles
   , lastTime
+  , logError
+  , logInfo
+  , logDebug
   ) where
 
 import Data.Binary (Binary)
 import Data.Map.Strict (Map)
 import Data.Function ((&))
+import Data.Text (Text)
 import Data.Time (UTCTime)
 import Control.Applicative (liftA2)
 import Control.Monad.RWS.Strict
@@ -42,6 +46,7 @@ import Achille.Path (Path)
 import Achille.IO as AIO
 
 import Data.Map.Strict qualified as Map
+import Data.Text       qualified as Text
 import Achille.Cache   qualified as Cache
 import Achille.Config  qualified as Cfg
 import Achille.Context qualified as Ctx
@@ -64,7 +69,7 @@ forward Nothing = halt
 forward (Just x) = pure x
 
 instance (Monad m, AchilleIO m) => MonadFail (PrimTask m) where
-  fail s = lift (AIO.debug s) *> halt
+  fail s = logError (Text.pack s) *> halt
 
 runPrimTask :: PrimTask m a -> Context -> Cache -> m (Maybe a, Cache, DynDeps)
 runPrimTask (PrimTask x) = runRWST $ runMaybeT x
@@ -84,13 +89,36 @@ instance (Monad m, AchilleIO m) => AchilleIO (PrimTask m) where
   doesDirExist path = lift (AIO.doesDirExist path) -- TODO(flupe): check semantics of mtime of dir
   listDir = lift . AIO.listDir
   callCommand = lift . AIO.callCommand
+  withColor = reader Ctx.colorful
   log = lift . AIO.log
-  debug = lift . AIO.debug
   readCommand cmd args = lift (AIO.readCommand cmd args)
   glob root pat = lift (AIO.glob root pat) <* tell (dependsOnPattern pat)
 
 -- NOTE(flupe): ^ maybe for AchilleIO (PrimTask m) we actually want to do
 --                smart path transformation?
+
+data LogType
+  = LogErr
+  | LogInfo
+  | LogDebug
+
+logError :: (Monad m, AchilleIO m) => Text -> PrimTask m ()
+logError = logMsg LogErr
+
+logDebug :: (Monad m, AchilleIO m) => Text -> PrimTask m ()
+logDebug = logMsg LogDebug
+
+logInfo :: (Monad m, AchilleIO m) => Text -> PrimTask m ()
+logInfo = logMsg LogInfo
+
+logMsg :: (Monad m, AchilleIO m) => LogType -> Text -> PrimTask m ()
+logMsg lt t = do
+  Ctx.Context{verbose, colorful}   <- ask
+  when verbose $ AIO.log $ if colorful then logHead lt <> t  else t
+  where logHead :: LogType -> Text
+        logHead LogErr   = "\ESC[1;31m[ERROR]\ESC[0m "
+        logHead LogInfo  = "\ESC[1;34m[INFO]\ESC[0m "
+        logHead LogDebug = "\ESC[1;32m[DEBUG]\ESC[0m "
 
 withCache :: Monad m => Cache -> PrimTask m a -> PrimTask m (Maybe a, Cache)
 withCache lcache (PrimTask (runMaybeT -> t)) =

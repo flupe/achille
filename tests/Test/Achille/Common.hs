@@ -29,4 +29,6 @@ baseCtx = Context
   , currentDir   = "."
   , cleanBuild   = True
   , siteConfig = defaultConfig { outputDir = "output" }
+  , verbose = False
+  , colorful = False
   }
