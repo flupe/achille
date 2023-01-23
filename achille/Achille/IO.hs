@@ -4,13 +4,15 @@ module Achille.IO (AchilleIO(..)) where
 import Data.Text        (Text)
 import Data.Time.Clock  (UTCTime)
 import Data.String (fromString)
+import System.IO as SIO
 
-import Data.ByteString      qualified as BS
-import Data.ByteString.Lazy qualified as LBS
-import System.Directory     qualified as Directory
-import System.FilePath      qualified as FilePath
-import System.FilePath.Glob qualified as Glob
-import System.Process       qualified as Process
+import Data.ByteString        qualified as BS
+import Data.ByteString.Lazy   qualified as LBS
+import Data.Text.IO           qualified as Text
+import System.Directory       qualified as Directory
+import System.FilePath        qualified as FilePath
+import System.FilePath.Glob   qualified as Glob
+import System.Process         qualified as Process
 
 import Achille.Path
 
@@ -37,10 +39,10 @@ class AchilleIO m where
     callCommand :: String -> m ()
     -- | Run a shell command in a new process.
     readCommand :: String -> [String] -> m String
-    -- | Log a string to stdout.
-    log :: String -> m ()
-    -- | Log a /debug/ string to stdout.
-    debug :: String -> m ()
+    -- | Should colors be used in logs?
+    withColor :: m Bool
+    -- | Log some text to stdout, followed by a newline.
+    log :: Text -> m ()
 
     -- | Find all paths matching a given globpattern, relative to a given directory.
     --   All paths returned must be relative to the current working directory.
@@ -66,7 +68,7 @@ instance AchilleIO IO where
     listDir              = fmap (map fromString) . Directory.listDirectory . toFilePath
     callCommand          = Process.callCommand
     readCommand cmd args = Process.readProcess cmd args []
-    log                  = Prelude.putStrLn
-    debug                = Prelude.putStrLn
+    withColor            = SIO.hIsTerminalDevice SIO.stdout
+    log                  = Text.putStrLn
     glob dir pattern     = map fromString <$> Glob.globDir1 pattern (toFilePath dir)
     getModificationTime  = Directory.getModificationTime . toFilePath
