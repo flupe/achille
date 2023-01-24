@@ -82,9 +82,11 @@ processDeps Config{..} deps = do
   globTimes <- Map.fromList <$> forM globFiles \src -> (src,) <$> AIO.getModificationTime src
   specTimes <- Map.fromAscList . catMaybes <$>
     forM (Set.toAscList $ getFileDeps deps) \src -> do
-      exists <- (not (Map.member src globTimes) ||) <$> doesFileExist src
-      if exists then Just . (src,) <$> AIO.getModificationTime src
-                else pure Nothing
+      if Map.member src globTimes then pure Nothing
+      else do
+        exists <- doesFileExist src
+        if exists then Just . (src,) <$> AIO.getModificationTime src
+                  else pure Nothing
   pure (globTimes <> specTimes)
 
 -- | Run a task in some context given a configuration.

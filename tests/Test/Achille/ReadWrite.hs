@@ -12,7 +12,7 @@ import Achille as A
 
 tests :: TestTree
 tests = testGroup "read/write tests"
-  [ testCase "write" $ exactRun baseFS baseCtx
+  [ testCase "write" $ exactRun
 
       -- Writing the file will do just that, and return a URL pointing to the file
 
@@ -21,7 +21,7 @@ tests = testGroup "read/write tests"
       ( Just "/somewhere.txt"
       , [ WrittenFile "output/somewhere.txt" "somestuff" ])
 
-  , testCase "read" $ exactRun baseFS baseCtx
+  , testCase "read" $ exactRun
 
       -- Reading the file will do just that, but also check its modification time to know 
       -- if it has changed
@@ -33,7 +33,7 @@ tests = testGroup "read/write tests"
         , HasReadFile "content/fichier.txt"
         ])
 
-  , testCase "readwrite" $ exactRun baseFS baseCtx
+  , testCase "readwrite" $ exactRun
 
       A.do readText "fichier.txt" A.>>= write "fichier.txt"
 

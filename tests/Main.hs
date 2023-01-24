@@ -30,7 +30,7 @@ tests = testGroup "Tests"
   , ReadWrite.tests
   , Recovery.tests
   , testCase "copy" $
-      exactRun baseFS baseCtx
+      exactRun
         A.do copy "un.txt"
         ( Just "/un.txt"
         , [ CheckedMTime "content/un.txt", CopiedFile  "content/un.txt" "output/un.txt" ]
