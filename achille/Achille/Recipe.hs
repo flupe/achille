@@ -95,9 +95,9 @@ write = toURL <<< recipe "write" \v -> do
   path       <- (</>) <$> outputDir <*> pure (theVal vsrc)
   cleanBuild <- reader Ctx.cleanBuild
   -- NOTE(flupe): maybe also when the output file is no longer here
-  when (cleanBuild || hasChanged v)
-    $  logInfo ("Writing " <> pack (toFilePath path))
-    *> lift (Writable.write path (theVal vx))
+  when (cleanBuild || hasChanged v) do
+    logInfo ("Writing " <> pack (toFilePath path))
+    lift (Writable.write path (theVal vx))
   pure vsrc
 
 -- | Copies a file to the output path, preserving its name.

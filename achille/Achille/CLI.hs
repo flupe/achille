@@ -1,7 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 -- | CLI for achille recipes.
 module Achille.CLI
-  ( achille
+  ( processDeps
+  , achille
   , achilleWith
   )
   where
@@ -75,6 +76,17 @@ achilleCLI = subparser $
 -- NOTE(flupe): additional invariant: the list of file deps is already sorted
 type GlobalCache = (DynDeps, Cache)
 
+processDeps :: (Monad m, AchilleIO m) => Config -> DynDeps -> m (Map Path UTCTime)
+processDeps Config{..} deps = do
+  globFiles <- nub . concat <$> forM (getGlobDeps deps) (AIO.glob contentDir)
+  globTimes <- Map.fromList <$> forM globFiles \src -> (src,) <$> AIO.getModificationTime src
+  specTimes <- Map.fromAscList . catMaybes <$>
+    forM (Set.toAscList $ getFileDeps deps) \src -> do
+      exists <- (not (Map.member src globTimes) ||) <$> doesFileExist src
+      if exists then Just . (src,) <$> AIO.getModificationTime src
+                else pure Nothing
+  pure (globTimes <> specTimes)
+
 -- | Run a task in some context given a configuration.
 runAchille
   :: (Monad m, MonadFail m, AchilleIO m)
@@ -95,21 +107,12 @@ runAchille cfg@Config{..} force verbose colorful t = do
     else pure ((mempty, emptyCache), False, UTCTime (toEnum 0) 0)
 
   -- 2. retrieve mtime of all known dynamic dependencies
-  updates :: Map Path UTCTime <- do
-    globFiles <- nub . concat <$> forM (getGlobDeps deps) (AIO.glob contentDir)
-    globTimes <- Map.fromList <$> forM globFiles \src -> (src,) <$> AIO.getModificationTime src
-    specTimes <- Map.fromAscList . catMaybes <$>
-      forM (Set.toAscList $ getFileDeps deps) \src -> do
-        exists <- (not (Map.member src globTimes) ||) <$> doesFileExist src
-        if exists then Just . (src,) <$> AIO.getModificationTime src
-                  else pure Nothing
-
-    pure (globTimes <> specTimes)
+  updates :: Map Path UTCTime <- processDeps cfg deps
 
   -- 3. create initial context
   let ctx :: Context = Context
         { lastTime     = lastTime
-        , currentDir   = "."
+        , currentDir   = ""
         , updatedFiles = updates
         , cleanBuild   = not hasCache
         , siteConfig   = cfg

@@ -86,14 +86,6 @@ instance {-# OVERLAPPING #-} Monad m => IsString (Task m Path) where
         toCache path
         pure (value (not same) path)
 
--- instance {-# OVERLAPPING #-} Applicative m => IsString (Task m Pattern) where
---   fromString p = apply rec (pure ())
---     where
---       rec :: Recipe m () Pattern
---       rec = recipe "Achille.Core.Task.toPath" \Context{..} cache _ -> do
---         let path :: Pattern = fromString (toFilePath currentDir FP.</> p)
---         pure (value False path, cache)
-
 
 toProgram :: Task m a -> Program m a
 toProgram t = Prelude.fst $! unTask t 0

@@ -169,7 +169,7 @@ runProgramIn env t = case t of
   Match pat (t :: Program m b) vars -> do
     context@Context{..} :: Context <- ask
     let Config{..} = siteConfig
-    let thepat = FP.normalise (toFilePath currentDir <> "/" <> Glob.decompile pat)
+    let thepat = toFilePath currentDir FP.</> Glob.decompile pat
     let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
     stored :: Map Path Cache <- fromMaybe Map.empty <$> fromCache
     paths <- sort . fmap (normalise . makeRelative contentDir) <$> AIO.glob contentDir pat'
