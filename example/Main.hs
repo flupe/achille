@@ -21,7 +21,8 @@ data Post = Post
 
 newtype Index = Index
   { posts :: [PostItem] }
-  deriving newtype ToJSON
+  deriving (Generic)
+  deriving anyclass ToJSON
 
 data PostItem = PostItem
   { url  :: Text
