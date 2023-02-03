@@ -38,10 +38,8 @@ main :: IO ()
 main = achille A.do
   match "assets/*" (void . copy)
 
-  readText "fichier.txt" A.>>= write "fichier.txt"
-
   templates <- loadTemplates "templates"
-  items :: Task IO [MenuItem] <- readYaml "menu.yml"
+  items <- readYaml "menu.yml"
 
   match "**/*.md" \src -> A.do
     meta :*: content <- processPandocMeta src
