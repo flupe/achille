@@ -12,4 +12,4 @@ The following sites are generated with **achille**:
 
 - [achille.acatalepsie.fr](https://achille.acatalepsie.fr) [(source)](https://github.com/flupe/achille/tree/master/docs)
 - [acatalepsie.fr](https://acatalepsie.fr)
-- [lucas.escot.me](https://lucas.escot.me)
+- [lucas.escot.me](https://lucas.escot.me) [(source)](https://git.sr.ht/~flupe/escot)

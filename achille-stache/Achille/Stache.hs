@@ -5,6 +5,7 @@ module Achille.Stache
   , loadTemplates
   , applyTemplate
   , PName
+  , Template
   , ToJSON(toJSON)
   )
   where

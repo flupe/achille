@@ -1,6 +1,7 @@
 module Main where
 
 import Data.Maybe (fromMaybe)
+import Data.Text (pack)
 
 import Achille as A
 import Achille.Prelude

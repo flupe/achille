@@ -21,16 +21,16 @@ Features:
 - **Incremental** and **parallel**\* generators, without any annotation required from the user.
 - **Visualization**. Your generator can dump a Graphviz representation of its
   static build graph --- and without having to run it --- if you ask for it.
-
-*Wishful thinking, on the roadmap but not (yet) implemented:*  
-*(Though I think I have a solution for each of them in my head)*
-
 - **Dynamic dependencies** are kept track of during execution, 
   meaning files changing inbetween runs will *always* trigger tasks
   appropriately.
 - **Failure recovery**. Since the dependency graph of your build tasks is known at build time,
   if some of them fail during generation, it will always be able to complete
   all other tasks that are independent.
+
+*Wishful thinking, on the roadmap but not (yet) implemented:*  
+*(Though I think I have a solution for each of them in my head)*
+
 - **Self-tracking**.
 
 ---
