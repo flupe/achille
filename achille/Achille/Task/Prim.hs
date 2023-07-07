@@ -27,16 +27,10 @@ module Achille.Task.Prim
 
 import Data.Binary (Binary)
 import Data.Map.Strict (Map)
-import Data.Function ((&))
 import Data.Text (Text)
 import Data.Time (UTCTime)
-import Control.Applicative (liftA2)
 import Control.Monad.RWS.Strict
-import Control.Monad.Reader.Class
-import Control.Monad.State.Class
-import Control.Monad.Trans (MonadTrans(lift))
 import Control.Monad.Trans.Maybe
-import Control.Monad.Writer.Class
 
 import Achille.Cache (Cache)
 import Achille.Config (Config)
@@ -53,8 +47,7 @@ import Achille.Context qualified as Ctx
 
 
 -- PrimTask m a ≃ Context -> Cache -> m (Maybe a, DynDeps, Cache)
-newtype PrimTask m a =
-  PrimTask { unPrimTask :: MaybeT (RWST Context DynDeps Cache m) a }
+newtype PrimTask m a = PrimTask (MaybeT (RWST Context DynDeps Cache m) a)
   deriving newtype (Functor, Applicative, Monad)
   deriving newtype (MonadReader Context, MonadState Cache, MonadWriter DynDeps)
 
