@@ -13,24 +13,19 @@ module Achille.Core.Task
   , val
   , void
   , toProgram
+  , ifThenElse
   ) where
 
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
 
 import Control.Category
 import Control.Monad.Reader.Class (reader)
-import Control.Applicative (Alternative, empty, liftA2)
+import Control.Applicative (liftA2)
 import Control.Arrow
 import Data.Binary (Binary)
-import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
-import Data.List (sort)
-import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe)
 import Data.String (IsString(fromString))
-import Data.Time (UTCTime)
 import System.FilePath.Glob (Pattern)
-import Unsafe.Coerce (unsafeCoerce)
 
 import Achille.Core.Recipe
 import Achille.Core.Program
@@ -41,10 +36,7 @@ import Achille.Task.Prim
 import Achille.IO
 
 import Prelude            qualified
-import Data.IntMap.Strict qualified as IntMap
 import Data.IntSet        qualified as IntSet
-import Data.Map.Strict    qualified as Map
-import System.FilePath    qualified as FP
 import Achille.Context    qualified as Ctx
 
 
@@ -167,3 +159,12 @@ apply !r (T x) = T \n ->
           app Id x = x
           app r x = Apply r x
 {-# INLINE apply #-}
+
+-- | Conditionally run tasks
+ifThenElse :: Monad m => Task m Bool -> Task m a -> Task m a -> Task m a
+ifThenElse (T b) (T x) (T y) = T \n ->
+  let (b', vsb) = b $! n
+      (x', vsx) = x $! n
+      (y', vsy) = y $! n
+  in (Ite b' x' y', vsb <> vsx <> vsy)
+{-# INLINE ifThenElse #-}

@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, ApplicativeDo, RecordWildCards, OverloadedStrings #-}
+{-# LANGUAGE GADTs, ApplicativeDo, OverloadedStrings #-}
 module Achille.Recipe
   ( module Achille.Core.Recipe
   , log
@@ -20,23 +20,19 @@ module Achille.Recipe
 
 import Prelude hiding (reverse, take, drop, map, log, readFile)
 import Control.Monad (when)
-import Control.Monad.Trans (lift)
 import Control.Monad.Writer.Class
 import Control.Monad.Reader.Class
 import Control.Arrow
 import Data.Functor (($>))
-import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
 import Data.Map.Strict (Map)
 import Data.Maybe (isNothing)
-import Data.Set (Set)
-import Data.Text (Text, unpack, pack)
+import Data.Text (Text, pack)
 import Data.Text.Encoding (decodeUtf8)
 
-import Achille.IO hiding (debug, log)
+import Achille.IO hiding (log)
 import Achille.Diffable
 import Achille.Core.Recipe ( Recipe, PrimRecipe , recipe, runRecipe)
-import Achille.Context (Context)
 import Achille.DynDeps
 import Achille.Path
 import Achille.Task.Prim

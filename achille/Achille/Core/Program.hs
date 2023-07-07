@@ -3,15 +3,13 @@ module Achille.Core.Program where
 
 import Prelude hiding ((.), id, seq, (>>=), (>>), fst, snd)
 
-import Control.Applicative (Alternative, empty, liftA2)
-import Control.Arrow
+import Control.Applicative (liftA2)
 import Control.Category
 import Control.Monad (forM)
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
 
 import Data.Binary (Binary)
-import Data.Foldable (fold)
 import Data.Functor ((<&>), ($>))
 import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
@@ -19,14 +17,11 @@ import Data.List (sort)
 import Data.Map.Strict (Map)
 import Data.Maybe (fromMaybe, catMaybes)
 import Data.Monoid (All(..))
-import Data.String (IsString(fromString))
 import Data.Time (UTCTime)
-import GHC.Generics (Generic)
 
 import System.FilePath.Glob (Pattern)
 import Unsafe.Coerce (unsafeCoerce)
 
-import Prelude              qualified
 import Data.IntMap.Strict   qualified as IntMap
 import Data.IntSet          qualified as IntSet
 import Data.Map.Strict      qualified as Map
@@ -64,6 +59,9 @@ data Program m a where
          -> IntSet
          -> Program m [b]
 
+  -- Conditional branching
+  Ite :: Program m Bool -> Program m a -> Program m a -> Program m a
+
   -- Embedding recipes
   Apply :: !(Recipe m a b) -> Program m a -> Program m b
 
@@ -76,15 +74,15 @@ data Program m a where
 
 instance Show (Program m a) where
   show p = case p of
-    Var k        -> "Var " <> show k
-    Seq x y      -> "Seq (" <> show x <> ") (" <> show y <> ")"
-    Bind x f     -> "Bind (" <> show x <> ") (" <> show f <> ")"
-    Match p v t  -> "Match " <> show p <> " (" <> show v <> ") (" <> show t <> ")"
-    Apply r x    ->  "Apply (" <> show r <> ") (" <> show x <> ")"
-    Pair x y     -> "Pair (" <> show x <> ") (" <> show y <> ")"
-    Fail s       -> "Fail " <> show s
-    Val x        -> "Val"
-
+    Var k         -> "Var " <> show k
+    Seq x y       -> "Seq (" <> show x <> ") (" <> show y <> ")"
+    Bind x f      -> "Bind (" <> show x <> ") (" <> show f <> ")"
+    Match pat v t -> "Match " <> show pat <> " (" <> show v <> ") (" <> show t <> ")"
+    Ite c x y     -> "Ite " <> show c <> " (" <> show x <> ") (" <> show y <> ")"
+    Apply r x     ->  "Apply (" <> show r <> ") (" <> show x <> ")"
+    Pair x y      -> "Pair (" <> show x <> ") (" <> show y <> ")"
+    Fail s        -> "Fail " <> show s
+    Val _         -> "Val"
 
 -- | Run a program given some context and incoming cache.
 runProgram
@@ -102,7 +100,7 @@ emptyEnv :: Env
 emptyEnv = Env IntMap.empty 0
 
 lookupEnv :: Env -> Int -> Maybe a
-lookupEnv (Env env n) k = env !? k <&> \(Boxed v) -> unsafeCoerce v
+lookupEnv (Env env _) k = env !? k <&> \(Boxed v) -> unsafeCoerce v
 
 bindEnv :: Env -> Value a -> Env
 bindEnv (Env env n) x = Env (IntMap.insert n (Boxed x) env) (n + 1)
@@ -114,9 +112,9 @@ envChanged (Env env _) = IntSet.foldr' op False
         op ((env IntMap.!) -> Boxed v) = (|| hasChanged v)
 
 depsClean :: Map Path UTCTime -> UTCTime -> DynDeps -> Bool
-depsClean edits lastTime (getFileDeps -> fdeps) = getAll $ foldMap (All . isClean) fdeps
+depsClean edits lastT (getFileDeps -> fdeps) = getAll $ foldMap (All . isClean) fdeps
   where isClean :: Path -> Bool
-        isClean src = maybe False (<= lastTime) (edits Map.!? src)
+        isClean src = maybe False (<= lastT) (edits Map.!? src)
 
 runProgramIn
   :: (Monad m, MonadFail m, AchilleIO m)
@@ -127,20 +125,36 @@ runProgramIn env t = case t of
 
   Seq x y -> do
     (cx, cy) <- splitCache
-    (_,  cx) <- withCache cx $ runProgramIn env x
-    (vy, cy) <- withCache cy $ runProgramIn env y
-    joinCache cx cy
+    (_,  cx') <- withCache cx $ runProgramIn env x
+    (vy, cy') <- withCache cy $ runProgramIn env y
+    joinCache cx' cy'
     forward vy
 
   Bind x f -> do
     (cx, cf) <- splitCache
-    (vx, cx) <- withCache cx $ runProgramIn env x
+    (vx, cx') <- withCache cx $ runProgramIn env x
     let env' = maybe env (bindEnv env) vx
-    (vy, cf) <- withCache cf $ runProgramIn env' f
-    joinCache cx cf
+    (vy, cf') <- withCache cf $ runProgramIn env' f
+    joinCache cx' cf'
     forward vy
     -- TODO(flupe): propagate failure to environment
     --              to allow things that do not depend on the value to be evaluated
+
+  Ite c x y -> do
+    (cc, cxy) <- splitCache
+    let (cx, cy) = Cache.splitCache cxy
+    (mc, cc') <- withCache cc $ runProgramIn env c
+    case mc of
+      Nothing -> joinCache cc' cxy *> halt
+      Just vb ->
+        if theVal vb then do
+          (vx, cx') <- withCache cx $ runProgramIn env x
+          joinCache cc' (Cache.joinCache cx' cy)
+          forward vx
+        else do
+          (vy, cy') <- withCache cy $ runProgramIn env y
+          joinCache cc' (Cache.joinCache cx cy')
+          forward vy
 
   Fail s -> fail s
   --
@@ -149,25 +163,25 @@ runProgramIn env t = case t of
   -- TODO(flupe): parallelism
   Pair x y -> do
     (cx, cy) <- splitCache
-    (a, cx) <- withCache cx $ runProgramIn env x
-    (b, cy) <- withCache cy $ runProgramIn env y
-    joinCache cx cy
+    (a, cx') <- withCache cx $ runProgramIn env x
+    (b, cy') <- withCache cy $ runProgramIn env y
+    joinCache cx' cy'
     forward (joinValue <$> ((,) <$> a <*> b))
 
   Val v -> pure v
 
   Apply r x -> do
     (cx, cr) <- splitCache
-    (a, cx) <- withCache cx $ runProgramIn env x
-    case a of
-      Nothing -> joinCache cx cr *> halt
+    (ma, cx') <- withCache cx $ runProgramIn env x
+    case ma of
+      Nothing -> joinCache cx' cr *> halt
       Just a -> do
-        (b, cr) <- withCache cr $ runRecipe r a
-        joinCache cx cr
+        (b, cr') <- withCache cr $ runRecipe r a
+        joinCache cx' cr'
         forward b
 
   Match pat (t :: Program m b) vars -> do
-    context@Context{..} :: Context <- ask
+    Context{..} :: Context <- ask
     let Config{..} = siteConfig
     let thepat = toFilePath currentDir FP.</> Glob.decompile pat
     let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
@@ -184,7 +198,7 @@ runProgramIn env t = case t of
           , depsClean updatedFiles lastTime deps ->
               tell deps $> (Just (value False x), cache)
         mpast -> do
-          let (oldVal, cache) = case mpast of
+          let (_, cache) = case mpast of
                 Just (_, (x, _, cache)) -> (Just x, cache)
                 Nothing                 -> (Nothing, Cache.emptyCache)
               env' = bindEnv env (value False src)

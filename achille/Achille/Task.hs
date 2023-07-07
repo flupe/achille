@@ -1,6 +1,6 @@
-{-# LANGUAGE ViewPatterns, OverloadedStrings, PatternSynonyms #-}
+{-# LANGUAGE ViewPatterns, PatternSynonyms #-}
 
-module Achille.Task 
+module Achille.Task
   ( module Achille.Core.Task
   , pattern (:*:)
   , toURL
@@ -28,24 +28,13 @@ module Achille.Task
 import Prelude
   hiding (log, fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
 import Control.Applicative (Applicative(liftA2))
-import Control.Category
-import Control.Arrow (arr)
-import Data.Binary (Binary)
 import Data.Map.Strict (Map)
-import Data.String (IsString(fromString))
 import Data.Text (Text)
-import System.FilePath.Glob (Pattern)
 
-import Achille.Diffable (Value, value)
 import Achille.IO (AchilleIO)
-import Achille.Recipe (Recipe)
 import Achille.Writable (Writable)
 
-import Prelude           qualified
-import Data.IntSet       qualified as IntSet
-import System.FilePath   qualified as FilePath
 import Achille.Recipe    qualified as Recipe
-import Achille.Writable  qualified as Writable
 
 import Achille.Core.Task
 import Achille.Path (Path)
@@ -141,3 +130,4 @@ drop n = apply (Recipe.drop n)
 infixl 9 !
 (!) :: (Monad m, Ord k, AchilleIO m) => Task m (Map k a) -> Task m k -> Task m a
 (!) m k = apply (Recipe.!) (m :*: k)
+

@@ -16,9 +16,10 @@ import Achille.Task
 
 import Test.Achille.FakeIO
 import Test.Achille.Common
-import Test.Achille.Match     qualified as Match
-import Test.Achille.ReadWrite qualified as ReadWrite
-import Test.Achille.Recovery  qualified as Recovery
+import Test.Achille.Match      qualified as Match
+import Test.Achille.ReadWrite  qualified as ReadWrite
+import Test.Achille.Recovery   qualified as Recovery
+import Test.Achille.Branching  qualified as Branching
 
 
 main :: IO ()
@@ -29,6 +30,7 @@ tests = testGroup "Tests"
   [ Match.tests
   , ReadWrite.tests
   , Recovery.tests
+  , Branching.tests
   , testCase "copy" $
       exactRun
         A.do copy "un.txt"

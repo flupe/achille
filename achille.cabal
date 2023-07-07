@@ -23,6 +23,7 @@ source-repository head
 library
   default-language: GHC2021
   hs-source-dirs: achille
+  ghc-options: -Wextra
   default-extensions: BlockArguments
                     , ImportQualifiedPost
                     , LambdaCase
