@@ -8,6 +8,7 @@ module Achille.Diffable
 
 import Data.Foldable (Foldable(..), foldMap)
 import Data.Bifunctor (bimap)
+import Data.Bifoldable (biany)
 import Data.Monoid (Any(..))
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as SMap
@@ -69,6 +70,20 @@ instance Diffable [a] where
 
   joinValue :: [Value a] -> Value [a]
   joinValue vs = Value (map theVal vs) (any hasChanged vs) (Just vs)
+
+
+instance Diffable (Either a b) where
+  type ChangeInfo (Either a b) = Either (Value a) (Value b)
+
+  splitValue :: Value (Either a b) -> Either (Value a) (Value b)
+  splitValue (Value e c Nothing) = bimap (value c) (value c) e
+  splitValue (Value _ _ (Just vs)) = vs
+
+  joinValue :: Either (Value a) (Value b) -> Value (Either a b)
+  joinValue vs =
+    Value (bimap theVal theVal vs)
+          (biany hasChanged hasChanged vs) 
+          (Just vs)
 
 
 instance Ord k => Diffable (Map k v) where

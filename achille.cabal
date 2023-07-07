@@ -39,6 +39,7 @@ library
                  , Achille.DynDeps
                  , Achille.IO
                  , Achille.Path
+                 , Achille.Pattern
                  , Achille.Prelude
                  , Achille.Recipe
                  , Achille.Task

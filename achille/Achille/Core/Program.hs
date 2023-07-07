@@ -57,6 +57,9 @@ data Program m a where
        -> Program m b -- ^ has a value of type @a@ in scope
        -> Program m b
 
+  -- Conditional branching
+  If :: Program m Bool -> Program m a -> Program m a -> Program m a
+
   -- File matching
   Match  :: (Eq b, Binary b)
          => !Pattern
@@ -76,14 +79,15 @@ data Program m a where
 
 instance Show (Program m a) where
   show p = case p of
-    Var k        -> "Var " <> show k
-    Seq x y      -> "Seq (" <> show x <> ") (" <> show y <> ")"
-    Bind x f     -> "Bind (" <> show x <> ") (" <> show f <> ")"
-    Match p v t  -> "Match " <> show p <> " (" <> show v <> ") (" <> show t <> ")"
-    Apply r x    ->  "Apply (" <> show r <> ") (" <> show x <> ")"
-    Pair x y     -> "Pair (" <> show x <> ") (" <> show y <> ")"
-    Fail s       -> "Fail " <> show s
-    Val x        -> "Val"
+    Var k       -> "Var " <> show k
+    Seq x y     -> "Seq (" <> show x <> ") (" <> show y <> ")"
+    Bind x f    -> "Bind (" <> show x <> ") (" <> show f <> ")"
+    If b x y    -> "If (" <> show b <> ") (" <> show x <> ") (" <> show y <> ")"
+    Match p v t -> "Match " <> show p <> " (" <> show v <> ") (" <> show t <> ")"
+    Apply r x   ->  "Apply (" <> show r <> ") (" <> show x <> ")"
+    Pair x y    -> "Pair (" <> show x <> ") (" <> show y <> ")"
+    Fail s      -> "Fail " <> show s
+    Val x       -> "Val"
 
 
 -- | Run a program given some context and incoming cache.
@@ -139,6 +143,20 @@ runProgramIn env t = case t of
     (vy, cf) <- withCache cf $ runProgramIn env' f
     joinCache cx cf
     forward vy
+    -- TODO(flupe): propagate failure to environment
+    --              to allow things that do not depend on the value to be evaluated
+
+  If b x y -> do
+    (cb, c)  <- splitCache
+    let (cx, cy) = Cache.splitCache c
+    (vb, cb') <- withCache cx $ runProgramIn env b
+    case vb of
+      Nothing -> joinCache cx cr *> halt
+      Just b -> do
+        (b, cr) <- -- withCache (if b then cx else cy) $ runRecipe r a
+        joinCache cx cr
+        forward b
+
     -- TODO(flupe): propagate failure to environment
     --              to allow things that do not depend on the value to be evaluated
 

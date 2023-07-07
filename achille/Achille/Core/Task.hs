@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Achille.Core.Task
-  ( Task
+  ( Task(T, unTask)
   , runTask
   , (>>)
   , (>>=)

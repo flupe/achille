@@ -31,11 +31,17 @@ type PrimRecipe m a b = Value a -> PrimTask m (Value b)
 data Recipe m a b where
   Id      :: Recipe m a a
   Comp    :: Recipe m b c -> Recipe m a b -> Recipe m a c
+  Void    :: Recipe m a ()
+  -- product
   (:***:) :: Recipe m a b -> Recipe m c d -> Recipe m (a, c) (b, d)
   (:&&&:) :: Recipe m a b -> Recipe m a c -> Recipe m a (b, c)
   Exl     :: Recipe m (a, b) a
   Exr     :: Recipe m (a, b) b
-  Void    :: Recipe m a ()
+  -- coproduct
+  (:+++:) :: Recipe m a c -> Recipe m b c -> Recipe m (Either a b) c
+  Injl    :: Recipe m a (Either a b)
+  Injr    :: Recipe m b (Either a b)
+  -- embedding
   Embed   :: !Text -> !(PrimRecipe m a b) -> Recipe m a b
 
 instance Show (Recipe m a b) where
@@ -48,12 +54,10 @@ instance Show (Recipe m a b) where
   show Void = "Void"
   show (Embed e r) = "Embed " <> show e
 
-
 -- TODO(flupe): clean this up?
 recipe :: Functor m => Text -> PrimRecipe m a b -> Recipe m a b
 recipe = Embed
 {-# INLINE recipe #-}
-
 
 runRecipe :: Monad m => Recipe m a b -> PrimRecipe m a b
 runRecipe r x = case r of
