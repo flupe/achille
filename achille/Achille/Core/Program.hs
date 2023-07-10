@@ -1,4 +1,5 @@
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE MultiWayIf #-}
 module Achille.Core.Program where
 
 import Prelude hiding ((.), id, seq, (>>=), (>>), fst, snd)
@@ -15,7 +16,7 @@ import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
 import Data.List (sort)
 import Data.Map.Strict (Map)
-import Data.Maybe (fromMaybe, catMaybes)
+import Data.Maybe (fromMaybe, catMaybes, isNothing)
 import Data.Monoid (All(..))
 import Data.Time (UTCTime)
 
@@ -62,6 +63,9 @@ data Program m a where
   -- Conditional branching
   Ite :: Program m Bool -> Program m a -> Program m a -> Program m a
 
+  -- Caching combinator
+  Cached :: Binary a => IntSet -> Program m a -> Program m a
+
   -- Embedding recipes
   Apply :: !(Recipe m a b) -> Program m a -> Program m b
 
@@ -78,7 +82,8 @@ instance Show (Program m a) where
     Seq x y       -> "Seq (" <> show x <> ") (" <> show y <> ")"
     Bind x f      -> "Bind (" <> show x <> ") (" <> show f <> ")"
     Match pat v t -> "Match " <> show pat <> " (" <> show v <> ") (" <> show t <> ")"
-    Ite c x y     -> "Ite " <> show c <> " (" <> show x <> ") (" <> show y <> ")"
+    Ite c x y     -> "Ite (" <> show c <> ") (" <> show x <> ") (" <> show y <> ")"
+    Cached _ p    -> "Cached _ (" <> show p <> show ")"
     Apply r x     ->  "Apply (" <> show r <> ") (" <> show x <> ")"
     Pair x y      -> "Pair (" <> show x <> ") (" <> show y <> ")"
     Fail s        -> "Fail " <> show s
@@ -139,6 +144,25 @@ runProgramIn env t = case t of
     forward vy
     -- TODO(flupe): propagate failure to environment
     --              to allow things that do not depend on the value to be evaluated
+
+  Cached vs (p :: Program m a) -> do
+    Context{updatedFiles, lastTime} :: Context <- ask
+    cached :: Maybe (a, DynDeps, Cache) <- fromCache
+    let (deps, cache) :: (DynDeps, Cache) =
+          case cached of
+            Just (_, d, c) -> (d, c)
+            _              -> (mempty, Cache.emptyCache)
+    if isNothing cached
+        || envChanged env vs
+        || not (depsClean updatedFiles lastTime deps) then do
+      ((v, cache'), deps) <- listen $ withCache cache $ runProgramIn env p
+      case v of
+        Nothing -> forward v
+        Just x  -> toCache (theVal x, deps, cache') *> forward v
+    else do
+      let Just (x, deps, _) = cached
+      tell deps
+      forward (Just (value False x))
 
   Ite c x y -> do
     (cc, cxy) <- splitCache
