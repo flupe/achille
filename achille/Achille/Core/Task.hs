@@ -12,6 +12,7 @@ module Achille.Core.Task
   , apply
   , val
   , void
+  , cached
   , toProgram
   , ifThenElse
   ) where
@@ -168,3 +169,9 @@ ifThenElse (T b) (T x) (T y) = T \n ->
       (y', vsy) = y $! n
   in (Ite b' x' y', vsb <> vsx <> vsy)
 {-# INLINE ifThenElse #-}
+
+cached :: (Monad m, Binary a) => Task m a -> Task m a
+cached (T x) = T \n ->
+  let (x', vs) = x $! n
+  in (Cached vs x', vs)
+{-# INLINE cached #-}
