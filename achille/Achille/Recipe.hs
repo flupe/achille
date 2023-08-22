@@ -121,7 +121,7 @@ map f = recipe "map" \v -> pure
 
 -- | Reverse a list.
 reverse :: Monad m => Recipe m [a] [a]
-reverse = recipe "reverse" \v -> pure (joinValue (Prelude.reverse (splitValue v)))
+reverse = recipe "reverse" (pure . joinValue . Prelude.reverse . splitValue)
 
 -- TODO(flupe): change information is incorrect here. if a value changes position, then it is "new" in some sense.
 --              maybe we really need difflists
@@ -129,22 +129,21 @@ reverse = recipe "reverse" \v -> pure (joinValue (Prelude.reverse (splitValue v)
 -- | Sort a list using the prelude @sort@.
 --   Crucially this takes care of tracking change information in the list.
 sort :: (Monad m, Ord a) => Recipe m [a] [a]
-sort = recipe "sort" \v -> pure (joinValue (List.sortOn theVal (splitValue v)))
+sort = sortOn id
 
 -- | Sort a list using the prelude @sort@.
 --   Crucially this takes care of tracking change information in the list.
 sortOn :: (Monad m, Ord b) => (a -> b) -> Recipe m [a] [a]
-sortOn f = recipe "sortOn" \v -> pure (joinValue (List.sortOn (f . theVal) (splitValue v)))
+sortOn f = recipe "sortOn" (pure . joinValue . sortChangesOn f . splitValue)
 
 -- TODO(flupe): make Int argument a task
--- NOTE: not optimal, take/drop both lists?
 -- | Return the prefix of length @n@ of the input list.
 take :: Monad m => Int -> Recipe m [a] [a]
-take n = recipe "take" \v -> pure (joinValue (Prelude.take n (splitValue v)))
+take n = recipe "take" (pure . joinValue . takeChanges n . splitValue)
 
 -- | Drop the first @n@ elements of the input list.
 drop :: Monad m => Int -> Recipe m [a] [a]
-drop n = recipe "drop" \v -> pure (joinValue (Prelude.drop n (splitValue v)))
+drop n = recipe "drop" (pure . joinValue . dropChanges n . splitValue)
 
 -----------
 
