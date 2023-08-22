@@ -1,16 +1,24 @@
-{-# LANGUAGE DefaultSignatures, TypeFamilyDependencies #-}
+{-# LANGUAGE TypeFamilyDependencies #-}
 module Achille.Diffable
   ( Value(..)
   , value
   , unit
   , Diffable(..)
+
+  , ListChange
+  , takeChanges
+  , sortChangesOn
+  , dropChanges
+  , listChangeVal
   ) where
 
 import Data.Foldable (Foldable(..), foldMap)
+import Data.List (sortOn)
 import Data.Bifunctor (bimap)
-import Data.Monoid (Any(..))
+import Data.Maybe (mapMaybe)
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as SMap
+import Data.Monoid (Any(..))
 
 -- | Wrapper containing a value of type @a@ and information about 
 --   how it has changed since the last run.
@@ -23,7 +31,7 @@ data Value a = Value
 instance Functor Value where
   -- for any f, we can only be conservative and assume it is injective
   -- if the input changes, we consider the output to also change and be "dirty"
-  -- in general, we cannot give more information about the change
+  -- in general, we cannot give more interesting information about the change
   fmap f (Value x c _) = value c (f x)
 
 value
@@ -59,17 +67,67 @@ instance Diffable (a, b) where
           (hasChanged x || hasChanged y)
           (Just c)
 
+-- Lists
+--
+
+data ListChange a
+  = Deleted a
+  | Inserted a
+  | Kept (Value a)
+  deriving (Functor)
+
+listChangeVal :: ListChange a -> a
+listChangeVal (Deleted x) = x
+listChangeVal (Inserted x) = x
+listChangeVal (Kept v) = theVal v
+
+listChangeToVal :: ListChange a -> Maybe a
+listChangeToVal (Deleted _) = Nothing
+listChangeToVal (Inserted x) = Just x
+listChangeToVal (Kept v) = Just (theVal v)
+
+listChangeDidChange :: ListChange a -> Bool
+listChangeDidChange (Deleted _) = True
+listChangeDidChange (Inserted _) = True
+listChangeDidChange (Kept v) = hasChanged v
+
+sortChangesOn :: Ord b => (a -> b) -> [ListChange a] -> [ListChange a]
+sortChangesOn f = sortOn (f . listChangeVal)
+
+flattenChanges :: [ListChange a] -> [a]
+flattenChanges = mapMaybe listChangeToVal
+
+takeChanges :: Int -> [ListChange a] -> [ListChange a]
+takeChanges n _ | n <= 0 = []
+takeChanges n (c:cs) =
+  let n' = case c of
+             Deleted _ -> n
+             _         -> n - 1
+  in c : takeChanges n' cs
+
+dropChanges :: Int -> [ListChange a] -> [ListChange a]
+dropChanges n cs | n <= 0 = cs
+dropChanges n (c:cs) =
+  let n' = case c of
+             Deleted _  -> n
+             _          -> n - 1
+  in dropChanges n' cs
 
 instance Diffable [a] where
-  type ChangeInfo [a] = [Value a]
+  type ChangeInfo [a] = [ListChange a]
 
-  splitValue :: Value [a] -> [Value a]
-  splitValue (Value xs c Nothing) = map (value c) xs
-  splitValue (Value _ _ (Just vs)) = vs
+  splitValue :: Value [a] -> [ListChange a]
+  splitValue (Value xs c Nothing) = [ Kept (value c x) | x <- xs ]
+  splitValue (Value x c (Just cs)) = cs
 
-  joinValue :: [Value a] -> Value [a]
-  joinValue vs = Value (map theVal vs) (any hasChanged vs) (Just vs)
+  joinValue :: [ListChange a] -> Value [a]
+  joinValue cs =
+    Value (flattenChanges cs)
+          (any listChangeDidChange cs)
+          (Just cs)
 
+
+-- The following instance is incorrect and should be made like the previous one
 
 instance Ord k => Diffable (Map k v) where
   type ChangeInfo (Map k v) = Map k (Value v)
