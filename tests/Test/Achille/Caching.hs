@@ -22,6 +22,7 @@ tests = testGroup "cached combinator"
   [ testCase "cached combinator does cache" $ testRun
 
       (cached A.do
+        log "hello"
         readText "fichier.txt"
           & write "output.txt"
         pure ())
@@ -30,7 +31,8 @@ tests = testGroup "cached combinator"
 
         buildAndExpect
           ( Just ()
-          , [ CheckedMTime "content/fichier.txt"
+          , [ Logged "hello"
+            , CheckedMTime "content/fichier.txt"
             , HasReadFile "content/fichier.txt"
             , WrittenFile "output/output.txt" "helloworld"
             ]
@@ -48,6 +50,7 @@ tests = testGroup "cached combinator"
   , testCase "cached combinator correct w.r.t dynamic dependencies" $ testRun
 
       (cached A.do
+        log "hello"
         readText "fichier.txt"
           & write "output.txt"
         pure ())
@@ -56,7 +59,8 @@ tests = testGroup "cached combinator"
 
         buildAndExpect
           ( Just ()
-          , [ CheckedMTime "content/fichier.txt"
+          , [ Logged "hello"
+            , CheckedMTime "content/fichier.txt"
             , HasReadFile "content/fichier.txt"
             , WrittenFile "output/output.txt" "helloworld"
             ]
@@ -72,6 +76,7 @@ tests = testGroup "cached combinator"
           ( Just ()
           , [ CheckedFile "content/fichier.txt"
             , CheckedMTime "content/fichier.txt"
+            , Logged "hello"
             , HasReadFile "content/fichier.txt"
             , WrittenFile "output/output.txt" "hello"
             ]
@@ -82,7 +87,7 @@ tests = testGroup "cached combinator"
       A.do
         x <- readText "fichier.txt"
         y <- readText "post.md"
-        cached $ write "output.txt" x
+        cached $ log "hello" *> write "output.txt" x
         pure ()
 
       Prelude.do
@@ -93,6 +98,7 @@ tests = testGroup "cached combinator"
             , HasReadFile "content/fichier.txt"
             , CheckedMTime "content/post.md"
             , HasReadFile "content/post.md"
+            , Logged "hello"
             , WrittenFile "output/output.txt" "helloworld"
             ]
           )
@@ -124,6 +130,7 @@ tests = testGroup "cached combinator"
             , CheckedMTime "content/post.md"
             , HasReadFile "content/fichier.txt"
             , HasReadFile "content/post.md"
+            , Logged "hello"
             , WrittenFile "output/output.txt" "hello"
             ]
           )
