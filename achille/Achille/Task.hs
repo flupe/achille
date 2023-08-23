@@ -10,6 +10,8 @@ module Achille.Task
   , copy
   , (-<.>)
   , readText
+  , glob
+  , match
   , -- * Operations over lists
     --
     -- $lists
@@ -29,6 +31,8 @@ import Prelude
   hiding (log, fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
 import Control.Applicative (Applicative(liftA2))
 import Data.Map.Strict (Map)
+import Data.Binary (Binary)
+import System.FilePath.Glob (Pattern)
 import Data.Text (Text)
 
 import Achille.IO (AchilleIO)
@@ -120,6 +124,14 @@ take n = apply (Recipe.take n)
 drop :: Monad m => Int -> Task m [a] -> Task m [a]
 drop n = apply (Recipe.drop n)
 
+-- | Return all paths matching the given pattern.
+glob :: (AchilleIO m, Monad m) => Task m Pattern -> Task m [Path]
+glob = apply Recipe.glob
+
+match
+  :: (Monad m, AchilleIO m, Binary b, Eq b)
+  => Task m Pattern -> (Task m Path -> Task m b) -> Task m [b]
+match p f = for (glob p) f
 
 -- $maps
 --

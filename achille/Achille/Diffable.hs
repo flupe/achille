@@ -5,11 +5,12 @@ module Achille.Diffable
   , unit
   , Diffable(..)
 
-  , ListChange
+  , ListChange(..)
   , takeChanges
   , sortChangesOn
   , dropChanges
   , listChangeVal
+  , cmpChangesAsc
   ) where
 
 import Data.Foldable (Foldable(..), foldMap)
@@ -104,6 +105,16 @@ takeChanges n (c:cs) =
              Deleted _ -> n
              _         -> n - 1
   in c : takeChanges n' cs
+
+cmpChangesAsc :: (Ord a) => [a] -> [a] -> [ListChange a]
+cmpChangesAsc [] [] = []
+cmpChangesAsc xs [] = map Deleted xs
+cmpChangesAsc [] ys = map Inserted ys
+cmpChangesAsc (x:xs) (y:ys) =
+  case compare x y of
+    EQ -> Kept (value False x) : cmpChangesAsc xs ys
+    LT -> Deleted x  : cmpChangesAsc xs (y:ys)
+    GT -> Inserted y : cmpChangesAsc (x:xs) (y:ys)
 
 dropChanges :: Int -> [ListChange a] -> [ListChange a]
 dropChanges n cs | n <= 0 = cs

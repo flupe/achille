@@ -8,7 +8,7 @@ module Achille.Core.Task
   , fst
   , snd
   , fail
-  , match
+  , for
   , apply
   , val
   , void
@@ -34,7 +34,7 @@ import Achille.Diffable as Diffable
 import Achille.DynDeps (DynDeps)
 import Achille.Path
 import Achille.Task.Prim
-import Achille.IO
+import Achille.IO hiding (glob)
 
 import Prelude            qualified
 import Data.IntSet        qualified as IntSet
@@ -133,18 +133,24 @@ fail :: String -> Task m a
 fail s = T $ const (Fail s, IntSet.empty)
 {-# INLINE fail #-}
 
+
+for :: (Ord a, Binary a, Binary b, Eq b) => Task m [a] -> (Task m a -> Task m b) -> Task m [b]
+for (T xs) t = T $ \n ->
+  let (xs', vxs) = xs $! n
+      (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
+  in (For xs' t' vst, IntSet.union vst vxs)
+
 -- | For every path matching the Glob pattern, run the given Task and
 --   collect all results in a list.
 --   @match@ caches the list, and only triggers the Task on a given path if
 --   the underlying file is new or has changed since the last run.
-match :: (Binary b, Eq b) => Pattern -> (Task m Path -> Task m b) -> Task m [b]
-match pat t = T \n ->
-  -- remove locally-bound variables
-  -- NOTE(flupe): maybe we can pospone the filtering at evaluation
-  --              because maybe it gets in the way of compile-time translation
-  let (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
-  in (Match pat t' vst, vst)
-{-# INLINE match #-}
+-- match pat t = T \n ->
+--   -- remove locally-bound variables
+--   -- NOTE(flupe): maybe we can pospone the filtering at evaluation
+--   --              because maybe it gets in the way of compile-time translation
+--   let (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
+--   in (Match pat t' vst, vst)
+-- {-# INLINE match #-}
 
 -- | Lift a value into a task.
 val :: Value a -> Task m a

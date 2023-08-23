@@ -25,6 +25,7 @@ import Unsafe.Coerce (unsafeCoerce)
 
 import Data.IntMap.Strict   qualified as IntMap
 import Data.IntSet          qualified as IntSet
+import Data.Set             qualified as Set
 import Data.Map.Strict      qualified as Map
 import System.FilePath      qualified as FP
 import System.FilePath.Glob qualified as Glob
@@ -53,12 +54,17 @@ data Program m a where
        -> Program m b -- ^ has a value of type @a@ in scope
        -> Program m b
 
-  -- File matching
-  Match  :: (Eq b, Binary b)
-         => !Pattern
-         -> Program m b -- ^ has a filepath in scope
-         -> IntSet
-         -> Program m [b]
+  -- Iteration
+  For :: (Binary a, Ord a, Eq b, Binary b)
+      => Program m [a] -> Program m b -> IntSet
+      -> Program m [b]
+
+  -- -- File matching
+  -- Match  :: (Eq b, Binary b)
+  --        => !Pattern
+  --        -> Program m b -- ^ has a filepath in scope
+  --        -> IntSet
+  --        -> Program m [b]
 
   -- Conditional branching
   Ite :: Program m Bool -> Program m a -> Program m a -> Program m a
@@ -81,7 +87,7 @@ instance Show (Program m a) where
     Var k         -> "Var " <> show k
     Seq x y       -> "Seq (" <> show x <> ") (" <> show y <> ")"
     Bind x f      -> "Bind (" <> show x <> ") (" <> show f <> ")"
-    Match pat v t -> "Match " <> show pat <> " (" <> show v <> ") (" <> show t <> ")"
+    For xs f vs  -> "Match " <> show xs <> " (" <> show f <> ") (" <> show vs <> ")"
     Ite c x y     -> "Ite (" <> show c <> ") (" <> show x <> ") (" <> show y <> ")"
     Cached _ p    -> "Cached _ (" <> show p <> show ")"
     Apply r x     ->  "Apply (" <> show r <> ") (" <> show x <> ")"
@@ -204,42 +210,75 @@ runProgramIn env t = case t of
         joinCache cx' cr'
         forward b
 
-  Match pat (t :: Program m b) vars -> do
-    Context{..} :: Context <- ask
-    let Config{..} = siteConfig
-    let thepat = toFilePath currentDir FP.</> Glob.decompile pat
-    let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
-    stored :: Map Path Cache <- fromMaybe Map.empty <$> fromCache
-    paths <- sort . fmap (normalise . makeRelative contentDir) <$> AIO.glob contentDir pat'
-    res :: [(Maybe (Value b), Cache)] <- forM paths \src -> do
-      mtime <- AIO.getModificationTime (contentDir </> src)
-      let currentDir = takeDirectory src
-      let fileCache = stored Map.!? src
-      case liftA2 (,) fileCache (Cache.fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
-        Just (cache, (x, deps, _))
-          | mtime <= lastTime
-          , not (envChanged env vars)
-          , depsClean updatedFiles lastTime deps ->
-              tell deps $> (Just (value False x), cache)
-        mpast -> do
-          let (_, cache) = case mpast of
-                Just (_, (x, _, cache)) -> (Just x, cache)
-                Nothing                 -> (Nothing, Cache.emptyCache)
-              env' = bindEnv env (value False src)
-          ((t, cache'), deps) <- listen $
-            local (\c -> c { currentDir = currentDir
-                           , updatedFiles = Map.insert (contentDir </> src) mtime updatedFiles
-                           })
-              $ withCache cache $ runProgramIn env' t
-          case t of
-            Nothing -> pure (Nothing, Cache.emptyCache)
-            Just t  -> pure (Just t, Cache.toCache (theVal t, deps, cache'))
-          -- pure ( value (Just (theVal t) == oldVal) (theVal t)
-          --      , toCache (theVal t, deps, cache')
-          --      )
-    let (values, caches) = unzip res
-    tell (dependsOnPattern pat')
-    toCache (Map.fromAscList (zip paths caches))
-    pure (joinValue (catMaybes values))
+  For (xs :: Program m [a]) (f :: Program m b) vs -> do
+    (cxs, cys)  <- splitCache
+    (vxs, cxs') <- withCache cxs $ runProgramIn env xs
+    case vxs of
+      -- failure of getting input
+      Nothing -> joinCache cxs' cys *> halt
+      Just (splitValue -> cxs) -> do
+        chunks :: Map a (b, DynDeps, Cache) <- fromMaybe Map.empty <$> fromCache
+        rezz :: [(ListChange b, Maybe (a, (b, DynDeps, Cache)))] <- forM cxs \case
+          Deleted k -> let (x, _, _) = chunks Map.! k in pure (Deleted x, Nothing) -- in the case were deleted info is given, it should already be in the cache
+          Inserted k -> do
+            ((v, cache), deps) <- listen $ withCache Cache.emptyCache $ runProgramIn env f
+            tell deps
+            case v of
+              Nothing -> halt
+              Just v  -> pure (Inserted (theVal v), Just (k, (theVal v, deps, cache)))
+          Kept vk ->
+            case chunks Map.!? theVal vk of
+              Just (cachedVal, deps, cache) -> undefined
+              Nothing -> undefined
+        let (changes, catMaybes -> items) = unzip rezz
+        toCache (Map.fromAscList items) -- unnecessary conversion??
+        pure (joinValue changes)
+
+  -- Match pat (t :: Program m b) vars -> do
+  --   context@Context{..} :: Context <- ask
+  --   undefined
+    -- let Config{..} = siteConfig
+    -- let thepat = toFilePath currentDir FP.</> Glob.decompile pat
+    -- let pat' = Glob.simplify $ Glob.compile thepat -- NOTE(flupe): Glob.simplify doesn't do anything?
+    -- stored :: Map Path Cache <- fromMaybe Map.empty <$> fromCache
+
+    -- -- TODO: make this cleaner
+    -- current_paths <- Set.fromList . sort . fmap (normalise . makeRelative contentDir)
+    --           <$> AIO.glob contentDir pat'
+    -- let old_paths = Map.keysSet stored
+    --     all_paths = Set.union current_paths old_paths
+
+    -- -- invariant: A cache is returned iff the listchange is Inserted or Kept
+    -- res :: [(Maybe (ListChange b), Maybe Cache)]
+    --   <- Set.toList <$> forM all_paths \src -> do
+    --     mtime <- AIO.getModificationTime (contentDir </> src)
+    --     let currentDir = takeDirectory src
+    --     let fileCache = stored Map.!? src
+    --     case liftA2 (,) fileCache (Cache.fromCache =<< fileCache) :: Maybe (Cache, (b, DynDeps, Cache)) of
+    --       Just (cache, (x, deps, _))
+    --         | mtime <= lastTime
+    --         , not (envChanged env vars)
+    --         , depsClean updatedFiles lastTime deps ->
+    --             tell deps $> undefined -- (Just (value False x), cache)
+    --       mpast -> do
+    --         let (oldVal, cache) = case mpast of
+    --               Just (_, (x, _, cache)) -> (Just x, cache)
+    --               Nothing                 -> (Nothing, Cache.emptyCache)
+    --             env' = bindEnv env (value False src)
+    --         ((t, cache'), deps) <- listen $
+    --           local (\c -> c { currentDir = currentDir
+    --                          , updatedFiles = Map.insert (contentDir </> src) mtime updatedFiles
+    --                          })
+    --             $ withCache cache $ runProgramIn env' t
+    --         case t of
+    --           Nothing -> undefined -- pure (Nothing, Cache.emptyCache)
+    --           Just t  -> undefined -- pure (Just t, Cache.toCache (theVal t, deps, cache'))
+    --         -- pure ( value (Just (theVal t) == oldVal) (theVal t)
+    --         --      , toCache (theVal t, deps, cache')
+    --         --      )
+    -- tell (dependsOnPattern pat')
+    -- let (values, caches) = unzip res
+    -- toCache (Map.fromAscList (zip paths caches))
+    -- pure (joinValue (catMaybes values))
 
 {-# INLINE runProgramIn #-}

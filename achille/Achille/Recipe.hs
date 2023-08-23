@@ -15,6 +15,7 @@ module Achille.Recipe
   , sortOn
   , take
   , drop
+  , glob
   , (!)
   ) where
 
@@ -23,14 +24,17 @@ import Control.Monad (when)
 import Control.Monad.Writer.Class
 import Control.Monad.Reader.Class
 import Control.Arrow
-import Data.Functor (($>))
+import Data.Functor (($>), (<&>))
+import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
 import Data.Map.Strict (Map)
-import Data.Maybe (isNothing)
-import Data.Text (Text, pack)
+import Data.Maybe (isNothing, fromMaybe)
+import Data.Set (Set)
+import Data.Text (Text, unpack, pack)
 import Data.Text.Encoding (decodeUtf8)
+import System.FilePath.Glob (Pattern)
 
-import Achille.IO hiding (log)
+import Achille.IO hiding (debug, log, glob)
 import Achille.Diffable
 import Achille.Core.Recipe ( Recipe, PrimRecipe , recipe, runRecipe)
 import Achille.DynDeps
@@ -39,7 +43,7 @@ import Achille.Task.Prim
 import Achille.Writable (Writable)
 
 import Prelude           qualified
-import Data.List         qualified as List (sortOn)
+import Data.List         qualified as List (sortOn, sort)
 import Data.Map.Strict   qualified as Map
 import Achille.IO        qualified as AIO
 import Achille.Writable  qualified as Writable
@@ -144,6 +148,20 @@ take n = recipe "take" (pure . joinValue . takeChanges n . splitValue)
 -- | Drop the first @n@ elements of the input list.
 drop :: Monad m => Int -> Recipe m [a] [a]
 drop n = recipe "drop" (pure . joinValue . dropChanges n . splitValue)
+
+-- | Find paths matching the input pattern.
+glob :: (Monad m, AchilleIO m) => Recipe m Pattern [Path]
+glob = recipe "glob" \v -> do
+  context@Ctx.Context{siteConfig} :: Context <- ask
+  let Cfg.Config{contentDir} = siteConfig
+  oldies :: [Path] <- fromMaybe [] <$> fromCache
+  paths <-
+    AIO.glob contentDir (theVal v)
+    <&> fmap (normalise . makeRelative contentDir)
+    <&> List.sort
+  toCache paths
+  tell $ dependsOnPattern (theVal v)
+  pure (joinValue (cmpChangesAsc oldies paths))
 
 -----------
 
