@@ -147,7 +147,7 @@ runProgramIn env t = case t of
     --              to allow things that do not depend on the value to be evaluated
 
   Cached vs (p :: Program m a) -> do
-    Context{updatedFiles, lastTime} :: Context <- ask
+    Context {updatedFiles, lastTime} :: Context <- ask
     cached :: Maybe (a, DynDeps, Cache) <- fromCache
     let (deps, cache) :: (DynDeps, Cache) =
           case cached of
