@@ -45,6 +45,7 @@ baseCfg = defaultConfig { outputDir = "output" }
 baseCtx :: Context
 baseCtx = Context
   { lastTime     = defMTime
+  , currentTime  = defMTime
   , updatedFiles = Map.empty
   , currentDir   = ""
   , cleanBuild   = True

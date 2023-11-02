@@ -69,6 +69,7 @@ instance AchilleIO FakeIO where
     readCommand = undefined
     log s = tell [Logged s]
     glob r pat = asks (globFS r pat)
+    getCurrentTime = undefined
 
 
 runFakeIO :: FakeIO a -> FileSystem -> IO (a, [IOActions])
@@ -122,6 +123,7 @@ buildAndExpect (eval, eactions) = ReaderT \t -> StateT \TState{..} -> do
   let ctx = baseCtx
         { updatedFiles = updates
         , lastTime     = tLastTime
+        , currentTime  = tCurrentTime
         , cleanBuild   = isNothing tCache
         }
   ((res, cache, deps), actions) <-

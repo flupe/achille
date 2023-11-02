@@ -6,6 +6,7 @@ import Data.Time.Clock  (UTCTime)
 import Data.String (fromString)
 import System.IO as SIO
 
+import Data.Time qualified as Time (getCurrentTime)
 import Data.ByteString        qualified as BS
 import Data.ByteString.Lazy   qualified as LBS
 import Data.Text.IO           qualified as Text
@@ -50,6 +51,8 @@ class AchilleIO m where
     -- | Get modification time of a file.
     getModificationTime :: Path -> m UTCTime
 
+    getCurrentTime :: m UTCTime
+
 
 ensureDirExists :: Path -> IO ()
 ensureDirExists = Directory.createDirectoryIfMissing True . toFilePath . takeDirectory
@@ -69,3 +72,4 @@ instance AchilleIO IO where
     log                  = Text.putStrLn
     glob dir pattern     = map fromString <$> Glob.globDir1 pattern (toFilePath dir)
     getModificationTime  = Directory.getModificationTime . toFilePath
+    getCurrentTime       = Time.getCurrentTime
