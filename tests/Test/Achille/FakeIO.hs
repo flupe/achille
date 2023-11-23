@@ -125,7 +125,7 @@ buildAndExpect (eval, eactions) = ReaderT \t -> StateT \TState{..} -> do
   theVal <$> res          @?= eval
   (preactions ++ actions) @?= eactions
 
-  print deps
+  -- print deps
   -- updated state
   pure ((), TState (Just cache) deps tFS tCurrentTime tCurrentTime)
 

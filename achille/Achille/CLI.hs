@@ -8,8 +8,6 @@ module Achille.CLI
   where
 
 import Control.Monad (forM, when)
-import Data.Binary (encode)
-import Data.Functor (void)
 import Data.List (nub)
 import Data.Map.Strict (Map)
 import Data.Maybe (catMaybes)
@@ -22,12 +20,10 @@ import System.IO
 
 import Achille.Cache
 import Achille.Config (Config(..), defaultConfig, cacheFile)
-import Achille.Diffable (unit)
 import Achille.Dot (outputGraph)
 import Achille.Path
 import Achille.Task (Task, runTask)
-import Achille.Recipe hiding (void)
-import Achille.IO (AchilleIO(doesFileExist, readFileLazy, writeFileLazy))
+import Achille.IO (AchilleIO(doesFileExist))
 
 import Data.Binary          qualified as Binary
 import Data.ByteString.Lazy qualified as LBS
@@ -39,8 +35,6 @@ import Achille.Core.Task (toProgram)
 import Achille.Context (Context(..))
 import Achille.DynDeps
 import Achille.Task.Prim
-import Achille.Core.Recipe
-
 
 
 -- TODO(flupe): make the CLI interace extensible
@@ -163,5 +157,6 @@ instance Show Duration where
   show (Duration d) = stab (d * 10) ["ps", "ns", "μs", "ms", "s"]
     where
       stab :: Integer -> [String] -> String
-      stab x (unit:us@(_:_)) | x >= 10000 = stab (x `div` 1000) us
+      stab x (_   :us@(_:_)) | x >= 10000 = stab (x `div` 1000) us
       stab x (unit:_) = showFFloat (Just 1) (fromIntegral x / 10) (" " <> unit)
+      stab _ [] = ""

@@ -3,11 +3,8 @@
 module Achille.Dot where
 
 import Prelude hiding ((.), id, lookup)
-import Control.Applicative (Applicative(..))
-import Control.Category
 import Data.Text (unpack)
 import Data.Text.Lazy.Builder (Builder, toLazyText)
-import Data.Text.Lazy.IO (putStrLn)
 import Data.Text.Lazy.IO qualified as Text
 import Data.Map.Strict (Map)
 
@@ -51,7 +48,7 @@ newtype ProgramRenderer b = PR
   } deriving (Functor)
 
 instance Applicative ProgramRenderer where
-  pure x = PR \env nextId -> (x, nextId)
+  pure x = PR \_ nextId -> (x, nextId)
   mf <*> mx = PR \env nextId ->
     let (f, nextId')  = renderP mf env nextId
         (x, nextId'') = renderP mx env nextId'
@@ -69,7 +66,7 @@ bind :: Int -> ProgramRenderer a -> ProgramRenderer a
 bind v p = PR \env nextId -> renderP p (bindEnv env v) nextId
 
 newNode :: ProgramRenderer Int
-newNode = PR \env nextId -> (nextId, nextId + 1)
+newNode = PR \_ nextId -> (nextId, nextId + 1)
 
 buildGraph :: Program m a
            -> ProgramRenderer (Builder, Int)
@@ -81,14 +78,14 @@ buildGraph p = case p of
     (by, oy) <- buildGraph y
     pure (bx <> by, oy)
 
-  Fail x -> ("",) <$> newNode
+  Fail _ -> ("",) <$> newNode
 
   Bind x y -> do
     (bx, ox) <- buildGraph x
     (by, oy) <- bind ox $ buildGraph y
     pure (bx <> by, oy)
 
-  Val x -> do
+  Val _ -> do
     out <- newNode
     pure (Builder.fromString $ show out <> "[label=\"value\"];", out)
 

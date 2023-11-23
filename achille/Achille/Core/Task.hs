@@ -15,6 +15,7 @@ module Achille.Core.Task
   , cached
   , toProgram
   , ifThenElse
+  , scoped
   ) where
 
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
@@ -26,7 +27,7 @@ import Control.Arrow
 import Data.Binary (Binary)
 import Data.IntSet (IntSet)
 import Data.String (IsString(fromString))
-import System.FilePath.Glob (Pattern)
+import GHC.Exts (IsList(..))
 
 import Achille.Core.Recipe
 import Achille.Core.Program
@@ -67,6 +68,7 @@ instance {-# OVERLAPPABLE #-} (Monad m, IsString a) => IsString (Task m a) where
 
 -- NOTE(flupe): Paths and Patterns are not just lifted to tasks, but also get the current
 --              directory prepended.
+-- NOTE(flupe): is this desired behaviour, actually?
 
 instance {-# OVERLAPPING #-} Monad m => IsString (Task m Path) where
   fromString p = apply rec (pure ())
@@ -78,6 +80,16 @@ instance {-# OVERLAPPING #-} Monad m => IsString (Task m Path) where
         same <- (Just path ==) <$> fromCache
         toCache path
         pure (value (not same) path)
+
+instance Monad m => IsList (Task m [a]) where
+  type Item (Task m [a]) = Task m a
+
+  fromList :: [Task m a] -> Task m [a]
+  fromList [] = pure []
+  fromList (x:xs) = liftA2 (:) x (fromList xs)
+
+  toList :: Task m [a] -> [Task m a]
+  toList = error "Cannot pattern match on task."
 
 
 toProgram :: Task m a -> Program m a
@@ -133,12 +145,11 @@ fail :: String -> Task m a
 fail s = T $ const (Fail s, IntSet.empty)
 {-# INLINE fail #-}
 
-
-for :: (Ord a, Binary a, Binary b, Eq b) => Task m [a] -> (Task m a -> Task m b) -> Task m [b]
+for :: Task m [a] -> (Task m a -> Task m b) -> Task m [b]
 for (T xs) t = T $ \n ->
   let (xs', vxs) = xs $! n
       (t', IntSet.filter (< n) -> vst) = unTask (t $ T $ const (Var n, IntSet.empty)) $! n + 1
-  in (For xs' t' vst, IntSet.union vst vxs)
+  in (For xs' t', IntSet.union vst vxs)
 
 -- | For every path matching the Glob pattern, run the given Task and
 --   collect all results in a list.
@@ -181,3 +192,10 @@ cached (T x) = T \n ->
   let (x', vs) = x $! n
   in (Cached vs x', vs)
 {-# INLINE cached #-}
+
+scoped :: Monad m => Task m Path -> Task m a -> Task m a
+scoped (T x) (T y) = T \n ->
+  let (x', vsx) = x $! n
+      (y', vsy) = y $! n
+  in (Scoped x' y', vsx <> vsy)
+{-# INLINE scoped #-}

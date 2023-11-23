@@ -30,6 +30,7 @@ module Achille.Task
 import Prelude
   hiding (log, fst, snd, (>>), (>>=), fail, (.), reverse, take, drop, map)
 import Control.Applicative (Applicative(liftA2))
+import Control.Arrow (arr)
 import Data.Map.Strict (Map)
 import Data.Binary (Binary)
 import System.FilePath.Glob (Pattern)
@@ -43,6 +44,7 @@ import Achille.Recipe    qualified as Recipe
 import Achille.Core.Task
 import Achille.Path (Path)
 import Achille.Path qualified as Path
+import Data.List qualified as List
 
 import Data.Binary.Instances.Time ()
 
@@ -109,12 +111,12 @@ reverse = apply Recipe.reverse
 
 -- | Sort a list using the prelude @sort@.
 sort :: (Monad m, Ord a) => Task m [a] -> Task m [a]
-sort = apply Recipe.sort
+sort = apply (arr List.sort)
 
 -- | Sort a list using the prelude @sort@.
 -- Crucially this takes care of tracking change information in the list.
 sortOn :: (Monad m, Ord b) => (a -> b) -> Task m [a] -> Task m [a]
-sortOn f = apply (Recipe.sortOn f)
+sortOn f = apply (arr $ List.sortOn f)
 
 -- | Return the prefix of length @n@ of the input list.
 take :: (Monad m) => Int -> Task m [a] -> Task m [a]
@@ -131,7 +133,7 @@ glob = apply Recipe.glob
 match
   :: (Monad m, AchilleIO m, Binary b, Eq b)
   => Task m Pattern -> (Task m Path -> Task m b) -> Task m [b]
-match p f = for (glob p) f
+match p f = for (glob p) \src -> cached (scoped src (f src))
 
 -- $maps
 --

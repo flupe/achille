@@ -16,7 +16,9 @@ import Achille.Task
 
 import Test.Achille.FakeIO
 import Test.Achille.Common
+import Test.Achille.Glob      qualified as Glob
 import Test.Achille.Match     qualified as Match
+import Test.Achille.Misc      qualified as Misc
 import Test.Achille.ReadWrite qualified as ReadWrite
 import Test.Achille.Recovery  qualified as Recovery
 import Test.Achille.Branching qualified as Branching
@@ -28,7 +30,9 @@ main = defaultMainWithIngredients [Reporter.ingredient] tests
 
 tests :: TestTree
 tests = testGroup "Tests"
-  [ Match.tests
+  [ Glob.tests
+  , Misc.tests
+  , Match.tests
   , ReadWrite.tests
   , Recovery.tests
   , Branching.tests

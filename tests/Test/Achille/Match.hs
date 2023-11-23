@@ -29,11 +29,9 @@ tests = testGroup "match tests"
           void $ match "*/index.md" \src ->
             void $ match "meta.md" copy
         ( Just ()
-        , [ CheckedMTime "content/dir1/index.md"
-          , CheckedMTime "content/dir1/meta.md"
+        , [ CheckedMTime "content/dir1/meta.md"
           , CopiedFile "content/dir1/meta.md" "output/dir1/meta.md"
 
-          , CheckedMTime "content/dir2/index.md"
           , CheckedMTime "content/dir2/meta.md"
           , CopiedFile "content/dir2/meta.md" "output/dir2/meta.md"
           ]
