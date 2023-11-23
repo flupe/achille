@@ -5,21 +5,9 @@ import Prelude hiding ((.), id, seq, fail)
 
 import Control.Category
 import Control.Arrow
-import Data.Binary (Binary(..))
-import Data.List (nub)
 import Data.Text (Text)
-import Data.Time (UTCTime)
-import Data.Set (Set)
-import Data.Map.Strict (Map)
-import GHC.Generics (Generic)
-import System.FilePath.Glob (Pattern)
 
-import Data.Set qualified as Set
-import System.FilePath.Glob qualified as Glob
-
-import Achille.Path
 import Achille.Diffable
-import Achille.IO
 import Achille.Task.Prim
 
 
@@ -46,7 +34,7 @@ instance Show (Recipe m a b) where
   show Exl = "Exl"
   show Exr = "Exr"
   show Void = "Void"
-  show (Embed e r) = "Embed " <> show e
+  show (Embed e _) = "Embed " <> show e
 
 
 -- TODO(flupe): clean this up?
@@ -88,7 +76,7 @@ runRecipe r x = case r of
   Exr  -> pure $ snd (splitValue x)
   Void -> pure unit
 
-  Embed n r -> r x
+  Embed _ r -> r x
 
 
 {-# INLINE runRecipe #-}

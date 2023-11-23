@@ -6,19 +6,15 @@ module Achille.Diffable
   , Diffable(..)
 
   , ListChange(..)
-  , takeChanges
-  , sortChangesOn
-  , dropChanges
-  , listChangeVal
+  , takeListChanges
+  , dropListChanges
+  , listChangeToVal
+  , mapZipChanges
   , cmpChangesAsc
   ) where
 
-import Data.Foldable (Foldable(..), foldMap)
-import Data.List (sortOn)
-import Data.Bifunctor (bimap)
 import Data.Maybe (mapMaybe)
 import Data.Map.Strict (Map)
-import Data.Map.Strict qualified as SMap
 import Data.Monoid (Any(..))
 
 -- | Wrapper containing a value of type @a@ and information about 
@@ -60,7 +56,7 @@ instance Diffable (a, b) where
 
   splitValue :: Value (a, b) -> (Value a, Value b)
   splitValue (Value (x, y) c Nothing) = (value c x, value c y)
-  splitValue (Value _ c (Just vs)) = vs
+  splitValue (Value _ _ (Just vs)) = vs
 
   joinValue :: (Value a, Value b) -> Value (a, b)
   joinValue c@(x, y) =
@@ -71,65 +67,74 @@ instance Diffable (a, b) where
 -- Lists
 --
 
+-- | List containing information about how it changed.
 data ListChange a
-  = Deleted a
+  = Deleted
+    -- ^ an element at this position was deleted
   | Inserted a
+    -- ^ an element at this position was inserted
   | Kept (Value a)
+    -- ^ an element here has been kept, but may have changed.
   deriving (Functor)
 
-listChangeVal :: ListChange a -> a
-listChangeVal (Deleted x) = x
-listChangeVal (Inserted x) = x
-listChangeVal (Kept v) = theVal v
-
 listChangeToVal :: ListChange a -> Maybe a
-listChangeToVal (Deleted _) = Nothing
+listChangeToVal Deleted      = Nothing
 listChangeToVal (Inserted x) = Just x
-listChangeToVal (Kept v) = Just (theVal v)
+listChangeToVal (Kept v)     = Just (theVal v)
 
 listChangeDidChange :: ListChange a -> Bool
-listChangeDidChange (Deleted _) = True
+listChangeDidChange Deleted      = True
 listChangeDidChange (Inserted _) = True
-listChangeDidChange (Kept v) = hasChanged v
+listChangeDidChange (Kept v)     = hasChanged v
 
-sortChangesOn :: Ord b => (a -> b) -> [ListChange a] -> [ListChange a]
-sortChangesOn f = sortOn (f . listChangeVal)
+-- NOTE(flupe): since we don't store deleted values, we can't really ALWAYS correctly sort changes
+-- sortChangesOn :: Ord b => (a -> b) -> [ListChange a] -> [ListChange a]
+-- sortChangesOn f = sortOn (f . listChangeVal)
 
 flattenChanges :: [ListChange a] -> [a]
 flattenChanges = mapMaybe listChangeToVal
 
-takeChanges :: Int -> [ListChange a] -> [ListChange a]
-takeChanges n _ | n <= 0 = []
-takeChanges n (c:cs) =
+takeListChanges :: Int -> [ListChange a] -> [ListChange a]
+takeListChanges _ [] = []
+takeListChanges !n _ | n <= 0 = []
+takeListChanges !n (c:cs) =
   let n' = case c of
-             Deleted _ -> n
-             _         -> n - 1
-  in c : takeChanges n' cs
+             Deleted -> n
+             _       -> n - 1
+  in c : takeListChanges n' cs
 
-cmpChangesAsc :: (Ord a) => [a] -> [a] -> [ListChange a]
+mapZipChanges :: Monad m => [ListChange a] -> [b] -> b -> (Value a -> b -> m c) -> m [c]
+mapZipChanges []              _      _ _   = pure []
+mapZipChanges (Deleted   :cs) bs     d f = mapZipChanges cs (drop 1 bs) d f
+mapZipChanges (Inserted x:cs) bs     d f = (:) <$> f (value True x) d <*> mapZipChanges cs bs d f
+mapZipChanges (Kept     v:cs) (b:bs) d f = (:) <$> f v b <*> mapZipChanges cs bs d f
+mapZipChanges (Kept     v:cs) []     d f = (:) <$> f v d <*> mapZipChanges cs [] d f
+
+cmpChangesAsc :: Ord a => [a] -> [a] -> [ListChange a]
 cmpChangesAsc [] [] = []
-cmpChangesAsc xs [] = map Deleted xs
+cmpChangesAsc xs [] = [ Deleted | _ <- xs ]
 cmpChangesAsc [] ys = map Inserted ys
 cmpChangesAsc (x:xs) (y:ys) =
   case compare x y of
-    EQ -> Kept (value False x) : cmpChangesAsc xs ys
-    LT -> Deleted x  : cmpChangesAsc xs (y:ys)
-    GT -> Inserted y : cmpChangesAsc (x:xs) (y:ys)
+    EQ -> Kept (value False x) : cmpChangesAsc xs     ys
+    LT -> Deleted              : cmpChangesAsc xs     (y:ys)
+    GT -> Inserted y           : cmpChangesAsc (x:xs) (y:ys)
 
-dropChanges :: Int -> [ListChange a] -> [ListChange a]
-dropChanges n cs | n <= 0 = cs
-dropChanges n (c:cs) =
+dropListChanges :: Int -> [ListChange a] -> [ListChange a]
+dropListChanges _ [] = []
+dropListChanges !n cs | n <= 0 = cs
+dropListChanges !n (c:cs) =
   let n' = case c of
-             Deleted _  -> n
-             _          -> n - 1
-  in dropChanges n' cs
+             Deleted  -> n
+             _        -> n - 1
+  in dropListChanges n' cs
 
 instance Diffable [a] where
   type ChangeInfo [a] = [ListChange a]
 
   splitValue :: Value [a] -> [ListChange a]
   splitValue (Value xs c Nothing) = [ Kept (value c x) | x <- xs ]
-  splitValue (Value x c (Just cs)) = cs
+  splitValue (Value _ _ (Just cs)) = cs
 
   joinValue :: [ListChange a] -> Value [a]
   joinValue cs =

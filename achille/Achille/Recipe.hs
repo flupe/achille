@@ -11,8 +11,8 @@ module Achille.Recipe
   , -- * Recipes over lists
     map
   , reverse
-  , sort
-  , sortOn
+  -- , sort
+  -- , sortOn
   , take
   , drop
   , glob
@@ -25,30 +25,30 @@ import Control.Monad.Writer.Class
 import Control.Monad.Reader.Class
 import Control.Arrow
 import Data.Functor (($>), (<&>))
-import Data.Bifunctor (bimap, first)
 import Data.ByteString (ByteString)
 import Data.Map.Strict (Map)
 import Data.Maybe (isNothing, fromMaybe)
-import Data.Set (Set)
-import Data.Text (Text, unpack, pack)
+import Data.Text (Text, pack)
 import Data.Text.Encoding (decodeUtf8)
 import System.FilePath.Glob (Pattern)
 
-import Achille.IO hiding (debug, log, glob)
+import Achille.IO hiding (log, glob)
 import Achille.Diffable
-import Achille.Core.Recipe ( Recipe, PrimRecipe , recipe, runRecipe)
+import Achille.Core.Recipe (Recipe, PrimRecipe , recipe, runRecipe)
 import Achille.DynDeps
 import Achille.Path
 import Achille.Task.Prim
 import Achille.Writable (Writable)
 
-import Prelude           qualified
-import Data.List         qualified as List (sortOn, sort)
-import Data.Map.Strict   qualified as Map
-import Achille.IO        qualified as AIO
-import Achille.Writable  qualified as Writable
-import Achille.Context   qualified as Ctx
-import Achille.Config    qualified as Cfg
+import Prelude              qualified
+import Data.List            qualified as List (sort)
+import Data.Map.Strict      qualified as Map
+import System.FilePath      qualified as FP
+import System.FilePath.Glob qualified as Glob
+import Achille.IO           qualified as AIO
+import Achille.Writable     qualified as Writable
+import Achille.Context      qualified as Ctx
+import Achille.Config       qualified as Cfg
 
 -- TODO(flupe): remove getModificationTime invocations when needed
 
@@ -127,36 +127,36 @@ map f = recipe "map" \v -> pure
 reverse :: Monad m => Recipe m [a] [a]
 reverse = recipe "reverse" (pure . joinValue . Prelude.reverse . splitValue)
 
--- TODO(flupe): change information is incorrect here. if a value changes position, then it is "new" in some sense.
---              maybe we really need difflists
+-- | Sort a list using the prelude @sort@.
+--   Crucially this takes care of tracking change information in the list.
+-- sort :: (Monad m, Ord a) => Recipe m [a] [a]
+-- sort = sortOn id
 
 -- | Sort a list using the prelude @sort@.
 --   Crucially this takes care of tracking change information in the list.
-sort :: (Monad m, Ord a) => Recipe m [a] [a]
-sort = sortOn id
-
--- | Sort a list using the prelude @sort@.
---   Crucially this takes care of tracking change information in the list.
-sortOn :: (Monad m, Ord b) => (a -> b) -> Recipe m [a] [a]
-sortOn f = recipe "sortOn" (pure . joinValue . sortChangesOn f . splitValue)
+-- sortOn :: (Monad m, Ord b) => (a -> b) -> Recipe m [a] [a]
+-- sortOn f = recipe "sortOn" (pure . joinValue . sortChangesOn f . splitValue)
 
 -- TODO(flupe): make Int argument a task
 -- | Return the prefix of length @n@ of the input list.
 take :: Monad m => Int -> Recipe m [a] [a]
-take n = recipe "take" (pure . joinValue . takeChanges n . splitValue)
+take n = recipe "take" (pure . joinValue . takeListChanges n . splitValue)
 
 -- | Drop the first @n@ elements of the input list.
 drop :: Monad m => Int -> Recipe m [a] [a]
-drop n = recipe "drop" (pure . joinValue . dropChanges n . splitValue)
+drop n = recipe "drop" (pure . joinValue . dropListChanges n . splitValue)
 
 -- | Find paths matching the input pattern.
+--   The matched patterns are cached.
 glob :: (Monad m, AchilleIO m) => Recipe m Pattern [Path]
 glob = recipe "glob" \v -> do
-  context@Ctx.Context{siteConfig} :: Context <- ask
+  Ctx.Context{siteConfig,currentDir} :: Context <- ask
   let Cfg.Config{contentDir} = siteConfig
+  let thepat = toFilePath currentDir FP.</> Glob.decompile (theVal v)
+  let pat' = Glob.simplify (Glob.compile thepat)
   oldies :: [Path] <- fromMaybe [] <$> fromCache
   paths <-
-    AIO.glob contentDir (theVal v)
+    AIO.glob contentDir pat'
     <&> fmap (normalise . makeRelative contentDir)
     <&> List.sort
   toCache paths
