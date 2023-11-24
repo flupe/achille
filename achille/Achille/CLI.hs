@@ -106,8 +106,13 @@ runAchille cfg@Config{..} force verbose colorful t = do
   updates :: Map Path UTCTime <- processDeps cfg deps
 
   -- 3. create initial context
+  -- NOTE(flupe): maybe we want to get lastTime in the cache
+  --              rather than read mtime from cache file
+  now <- AIO.getCurrentTime
+
   let ctx :: Context = Context
         { lastTime     = lastTime
+        , currentTime  = now
         , currentDir   = ""
         , updatedFiles = updates
         , cleanBuild   = not hasCache

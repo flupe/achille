@@ -12,6 +12,7 @@ import Achille.Path (Path)
 -- | Context in which tasks and recipes are run.
 data Context = Context
   { lastTime     :: UTCTime          -- ^ Time of the last run.
+  , currentTime  :: UTCTime
   , siteConfig   :: Config           -- ^ Site configuration
   , cleanBuild   :: Bool             -- ^ Whether to clean build and ignore change information.
   , currentDir   :: Path             -- ^ Directory used as root for glob patterns, and literal paths.

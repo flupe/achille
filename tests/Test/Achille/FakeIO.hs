@@ -69,6 +69,7 @@ instance AchilleIO FakeIO where
     readCommand = undefined
     log s = tell [Logged s]
     glob r pat = asks (globFS r pat)
+    getCurrentTime = undefined
 
 
 runFakeIO :: FakeIO a -> FileSystem -> IO (a, [IOActions])
@@ -107,6 +108,12 @@ waitASec :: TestRun a ()
 waitASec = modify \s ->
   s {tCurrentTime = addUTCTime 1 $ tCurrentTime s}
 
+
+setFile :: Path -> BS.ByteString -> TestRun a ()
+setFile src bs = modify \s ->
+  s { tFS = Map.insert src (File (tCurrentTime s) bs) (tFS s) }
+
+
 buildAndExpect
   :: (HasCallStack, Show a, Eq a)
   => (Maybe a, [IOActions])
@@ -116,6 +123,7 @@ buildAndExpect (eval, eactions) = ReaderT \t -> StateT \TState{..} -> do
   let ctx = baseCtx
         { updatedFiles = updates
         , lastTime     = tLastTime
+        , currentTime  = tCurrentTime
         , cleanBuild   = isNothing tCache
         }
   ((res, cache, deps), actions) <-
