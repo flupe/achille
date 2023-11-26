@@ -1,4 +1,3 @@
-{-# LANGUAGE TypeFamilyDependencies #-}
 module Achille.Diffable
   ( Value(..)
   , value
@@ -11,11 +10,14 @@ module Achille.Diffable
   , listChangeToVal
   , mapZipChanges
   , cmpChangesAsc
+  , Lifted(Lifted)
   ) where
 
 import Data.Maybe (mapMaybe)
 import Data.Map.Strict (Map)
 import Data.Monoid (Any(..))
+import Generics.SOP as SOP
+import GHC.Generics qualified as GHC
 
 -- | Wrapper containing a value of type @a@ and information about 
 --   how it has changed since the last run.
@@ -41,10 +43,9 @@ value c x = Value x c Nothing
 unit :: Value ()
 unit = value False ()
 
-
 -- | Typeclass for things that carry more information about change between runs.
 class Diffable a where
-  type ChangeInfo a = r | r -> a
+  type ChangeInfo a
 
   splitValue :: Value a -> ChangeInfo a
 
@@ -154,3 +155,36 @@ instance Ord k => Diffable (Map k v) where
   
   joinValue :: Map k (Value v) -> Value (Map k v)
   joinValue mv = Value (theVal <$> mv) (getAny (foldMap (Any . hasChanged) mv)) (Just mv)
+
+
+newtype Lifted a = Lifted a
+
+instance Generic a => Diffable (Lifted a) where
+  type ChangeInfo (Lifted a) =
+    ( Bool
+    , NS (NP Value) (Code a)
+    )
+
+  splitValue (Value (Lifted x) c Nothing) = (c, mapNS (value c . unI) $ unSOP $ from x)
+  splitValue (Value _ _ (Just i)) = i
+
+  joinValue i@(c, sop) = Value
+    (Lifted $ to $ SOP $ mapNS (I . theVal) sop)
+    (c || anyNS hasChanged sop)
+    (Just i)
+
+mapNP :: (forall a. f a -> g a) -> NP f xs -> NP g xs
+mapNP _ Nil         = Nil
+mapNP f (x :* xs) = f x :* mapNP f xs
+
+mapNS ::  (forall a. f a -> g a) -> NS (NP f) xs -> NS (NP g) xs
+mapNS f (Z x) = Z (mapNP f x)
+mapNS f (S x) = S (mapNS f x)
+
+anyNP :: (forall a. f a -> Bool) -> NP f xs -> Bool
+anyNP _ Nil = False
+anyNP f (x :* xs) = f x || anyNP f xs
+
+anyNS :: (forall a. f a -> Bool) -> NS (NP f) xs -> Bool
+anyNS f (Z xs) = anyNP f xs
+anyNS f (S xs) = anyNS f xs

@@ -33,7 +33,6 @@ import Control.Applicative (Applicative(liftA2))
 import Control.Arrow (arr)
 import Data.Map.Strict (Map)
 import Data.Binary (Binary)
-import System.FilePath.Glob (Pattern)
 import Data.Text (Text)
 
 import Achille.IO (AchilleIO)
@@ -45,6 +44,7 @@ import Achille.Core.Task
 import Achille.Path (Path)
 import Achille.Path qualified as Path
 import Data.List qualified as List
+import System.FilePath.Glob qualified as Glob (Pattern)
 
 import Data.Binary.Instances.Time ()
 
@@ -127,12 +127,12 @@ drop :: Monad m => Int -> Task m [a] -> Task m [a]
 drop n = apply (Recipe.drop n)
 
 -- | Return all paths matching the given pattern.
-glob :: (AchilleIO m, Monad m) => Task m Pattern -> Task m [Path]
+glob :: (AchilleIO m, Monad m) => Task m Glob.Pattern -> Task m [Path]
 glob = apply Recipe.glob
 
 match
   :: (Monad m, AchilleIO m, Binary b, Eq b)
-  => Task m Pattern -> (Task m Path -> Task m b) -> Task m [b]
+  => Task m Glob.Pattern -> (Task m Path -> Task m b) -> Task m [b]
 match p f = for (glob p) \src -> cached (scoped src (f src))
 
 -- $maps
