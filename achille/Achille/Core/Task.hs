@@ -16,6 +16,8 @@ module Achille.Core.Task
   , toProgram
   , ifThenElse
   , scoped
+  , switch
+  , Pattern(Pattern)
   ) where
 
 import Prelude hiding ((.), id, seq, fail, (>>=), (>>), fst, snd)
@@ -28,6 +30,8 @@ import Data.Binary (Binary)
 import Data.IntSet (IntSet)
 import Data.String (IsString(fromString))
 import GHC.Exts (IsList(..))
+import Generics.SOP (NS(..), NP(..), sList, SList(..), I(..), K(..))
+import Generics.SOP qualified as SOP
 
 import Achille.Core.Recipe
 import Achille.Core.Program
@@ -199,3 +203,62 @@ scoped (T x) (T y) = T \n ->
       (y', vsy) = y $! n
   in (Scoped x' y', vsx <> vsy)
 {-# INLINE scoped #-}
+
+-- | Encoding of datatype patterns.
+newtype Pattern m a = Pattern (NS (NP (Task m)) (SOP.Code a))
+
+-- | Pattern matching on a task producing a SOP-encoded datatype.
+switch :: forall a m b. SOP.Generic a => Task m (Lifted a) -> (Pattern m a -> Task m b) -> Task m b
+switch (T x) f = T \n ->
+  let (x', vsx) = x $! n
+      (bs, vsbs) = test2 id n
+  in ( Switch x' (Branches bs)
+     , vsx <> vsbs
+     )
+  where
+    -- TODO(flupe): write this using SOP combinators
+    mkProd :: forall ys. SOP.SListI ys => Int -> (NP (Task m) ys, Int)
+    mkProd n = case sList :: SList ys of
+      SNil  -> (Nil, n)
+      SCons -> 
+        let (p, n') = mkProd (n + 1) 
+        in (T (const (Var n, IntSet.empty)) :* p, n')
+
+    test :: forall ys. SOP.SListI ys 
+         => (NP (Task m) ys -> NS (NP (Task m)) (SOP.Code a))
+         -> Int
+         -> (Program m b, IntSet)
+    test mkSum n = 
+      let (prod, n') = mkProd n
+      in unTask (f (Pattern $ mkSum prod)) n'
+
+    test2 :: forall xs. SOP.SListI2 xs
+          => (NS (NP (Task m)) xs -> NS (NP (Task m)) (SOP.Code a))
+          -> Int
+          -> (NP (K (Program m b)) xs, IntSet)
+    test2 f n = case sList :: SList xs of
+      SNil  -> (Nil, IntSet.empty)
+      SCons ->
+        let (p , vars ) = test (f . Z) n
+            (ps, varss) = test2 (f . S) n
+        in (K p :* ps, vars <> varss)
+{-# INLINE switch #-}
+
+-- convenience mapping  because I don't have time to fully grasp the SOP api
+mapNP :: (forall a. f a -> g a) -> NP f xs -> NP g xs
+mapNP _ Nil       = Nil
+mapNP f (x :* xs) = f x :* mapNP f xs
+
+mapNS ::  (forall a. f a -> g a) -> NS (NP f) xs -> NS (NP g) xs
+mapNS f (Z x) = Z (mapNP f x)
+mapNS f (S x) = S (mapNS f x)
+
+anyNP :: (forall a. f a -> Bool) -> NP f xs -> Bool
+anyNP f Nil = False
+anyNP f (x :* xs) = f x || anyNP f xs
+
+anyNS :: (forall a. f a -> Bool) -> NS (NP f) xs -> Bool
+anyNS f (Z xs) = anyNP f xs
+anyNS f (S xs) = anyNS f xs
+
+

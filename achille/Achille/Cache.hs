@@ -1,3 +1,4 @@
+{-# LANGUAGE UndecidableInstances, DerivingStrategies, ScopedTypeVariables #-}
 module Achille.Cache
   ( Cache
   , emptyCache
@@ -5,16 +6,19 @@ module Achille.Cache
   , joinCache
   , fromCache
   , toCache
+  , defCaches
   ) where
 
 import GHC.Generics
-import Data.Binary (Binary)
+import Data.Binary (Binary(get, put), Get)
 import Data.ByteString (ByteString)
 import Data.Maybe (fromMaybe)
+import Generics.SOP (NP(..), NS(..), All, Compose)
 
 import Data.Binary          qualified as Binary
 import Data.ByteString      qualified as BS
 import Data.ByteString.Lazy qualified as LBS
+import Generics.SOP         qualified as SOP
 
 -- * Cache
 --
@@ -53,3 +57,20 @@ fromCache (Cache c) =
 toCache :: Binary a => a -> Cache
 toCache = Cache . BS.toStrict . Binary.encode
 
+
+-- TODO: move this somewhere else
+instance (Binary a, All SOP.Top xs) => Binary (NP (SOP.K a) xs) where
+  put Nil       = pure ()
+  put (x :* xs) = put x *> put xs
+
+  get :: Get (NP (SOP.K a) xs)
+  get = case SOP.sList :: SOP.SList xs of
+    SOP.SNil  -> pure Nil
+    SOP.SCons -> (:*) <$> get <*> get
+
+deriving newtype instance Binary a => Binary (SOP.K a b)
+
+defCaches :: forall xs. All SOP.Top xs => NP (SOP.K Cache) xs
+defCaches = case SOP.sList :: SOP.SList xs of 
+  SOP.SNil  -> Nil
+  SOP.SCons -> SOP.K emptyCache :* defCaches

@@ -2,15 +2,16 @@
 module Achille.Core.Program where
 
 import Prelude hiding ((.), id, seq, (>>=), (>>), fst, snd)
-import Prelude qualified as Prelude
+import Prelude qualified
 
 import Control.Category
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
 
 import GHC.Stack (HasCallStack)
+import Generics.SOP as SOP
 import Data.Binary (Binary)
-import Data.Bifunctor (first, bimap)
+import Data.Bifunctor (first, bimap, second)
 import Data.Functor ((<&>))
 import Data.IntMap.Strict (IntMap, (!?))
 import Data.IntSet (IntSet)
@@ -18,7 +19,6 @@ import Data.Map.Strict (Map)
 import Data.List (uncons)
 import Data.Maybe (fromMaybe, isNothing)
 import Data.Monoid (All(..))
-import Data.String (fromString)
 import Data.Time.Clock (UTCTime(UTCTime))
 
 import Unsafe.Coerce (unsafeCoerce)
@@ -32,7 +32,6 @@ import Achille.Context (Context(..))
 import Achille.Diffable
 import Achille.DynDeps (DynDeps, getFileDeps)
 import Achille.IO (AchilleIO)
-import Achille.IO qualified as AIO
 import Achille.Path
 import Achille.Task.Prim
 import Achille.Core.Recipe
@@ -70,8 +69,14 @@ data Program m a where
   Pair :: Program m a -> Program m b -> Program m (a, b)
   Fail :: !String -> Program m a
 
+  -- on generic-sop data, we can pattern-match
+  Switch :: Generic a => Program m (Lifted a) -> Branches m a b -> Program m b
+
   -- | Executes a program in the current directory of the given path.
   Scoped :: Program m Path -> Program m a -> Program m a
+
+-- | A program is stored for every constructor
+newtype Branches m a b = Branches (NP (K (Program m b)) (Code a))
 
 instance Show (Program m a) where
   show p = case p of
@@ -85,6 +90,7 @@ instance Show (Program m a) where
     Pair x y     -> "Pair (" <> show x <> ") (" <> show y <> ")"
     Fail s       -> "Fail " <> show s
     Val _        -> "Val"
+    Switch x _    -> "Switch (" <> show x <> ") ..."
     Scoped p x   -> "Scoped (" <> show p <> ") (" <> show x <> ")"
 
 -- | Run a program given some context and incoming cache.
@@ -266,4 +272,40 @@ runProgramIn env t = case t of
                                  $ runProgramIn env y
         joinCache cx' cy'
         forward b
+
+  Switch (px :: Program m (Lifted a)) (Branches bs :: Branches m a b) -> do
+    (cx, cbs) <- splitCache
+    (mx, cx') <- withCache cx $ runProgramIn env px
+    case mx of
+      Nothing -> joinCache cx' cbs *> halt
+      Just vx -> do
+        -- TODO(flupe): cache constructor choice
+        Context{currentTime} <- ask
+        let (_, sop) = splitValue vx
+        let (vlastChange, chunks) :: (UTCTime, NP (K Cache) (Code a)) 
+              = fromMaybe (zeroTime, Cache.defCaches) 
+                          (Cache.fromCache cbs)
+        let vtchange = if hasChanged vx then currentTime else vlastChange
+        (res, chunks') <- onConstructor vtchange sop bs chunks
+        joinCache cx' (Cache.toCache (vtchange, chunks'))
+        forward res
+    where
+      -- TODO(flupe): cache last modification for every bound value in pattern
+      bindPat :: UTCTime -> NP Value xs -> Env -> Env
+      bindPat _        Nil       env = env
+      bindPat vtchange (x :* xs) env = bindPat vtchange xs (bindEnv env vtchange x)
+
+      onConstructor
+        :: UTCTime                 -- last time since the input value changed
+        -> NS (NP Value) xs        -- incoming (split) datatype value
+        -> NP (K (Program m b)) xs -- possible branches
+        -> NP (K Cache) xs         -- available caches
+        -> PrimTask m (Maybe (Value b), NP (K Cache) xs)
+      onConstructor t (S k ) (_ :* bs) (c :* cs) =
+        second (c :*) <$> onConstructor t k bs cs
+      onConstructor t (Z vs) (K b :* _ ) (K c :* cs) = do
+        let env' = bindPat t vs env
+        (res, c') <- withCache c $ runProgramIn env' b
+        pure (res, K c' :* cs)
 {-# INLINE runProgramIn #-}
+
