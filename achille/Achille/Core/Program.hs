@@ -90,8 +90,11 @@ instance Show (Program m a) where
     Pair x y     -> "Pair (" <> show x <> ") (" <> show y <> ")"
     Fail s       -> "Fail " <> show s
     Val _        -> "Val"
-    Switch x _    -> "Switch (" <> show x <> ") ..."
+    Switch x bs  -> "Switch (" <> show x <> ") " <> show bs
     Scoped p x   -> "Scoped (" <> show p <> ") (" <> show x <> ")"
+
+instance Generic a => Show (Branches m a b) where
+  show (Branches bs) = show (SOP.hcollapse bs)
 
 -- | Run a program given some context and incoming cache.
 runProgram
