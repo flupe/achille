@@ -5,6 +5,7 @@ build-type:         Simple
 tested-with:        GHC == 9.4.4
 executable docs
   main-is: Main.hs
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
   default-language: GHC2021
   default-extensions: BlockArguments
                     , DeriveAnyClass
