@@ -1,6 +1,7 @@
 -- | Exposes an IO interface used by core achille recipes
 module Achille.IO (AchilleIO(..)) where
 
+import Control.Concurrent (MVar)
 import Data.Text        (Text)
 import Data.Time.Clock  (UTCTime)
 import Data.String (fromString)
@@ -14,8 +15,10 @@ import System.Directory       qualified as Directory
 import System.FilePath        qualified as FilePath
 import System.FilePath.Glob   qualified as Glob
 import System.Process         qualified as Process
+import Control.Concurrent     qualified as Concurrent
 
 import Achille.Path
+
 
 
 -- | Interface for IO operations used by core recipes.
@@ -52,6 +55,10 @@ class AchilleIO m where
     getModificationTime :: Path -> m UTCTime
 
     getCurrentTime :: m UTCTime
+    newEmptyMVar   :: m (MVar a)
+    putMVar        :: MVar a -> a -> m ()
+    readMVar       :: MVar a -> m a
+    fork           :: m () -> m ()
 
 
 ensureDirExists :: Path -> IO ()
@@ -73,3 +80,8 @@ instance AchilleIO IO where
     glob dir pattern     = map fromString <$> Glob.globDir1 pattern (toFilePath dir)
     getModificationTime  = Directory.getModificationTime . toFilePath
     getCurrentTime       = Time.getCurrentTime
+
+    newEmptyMVar = Concurrent.newEmptyMVar
+    putMVar      = Concurrent.putMVar
+    readMVar     = Concurrent.readMVar
+    fork         = (() <$) . Concurrent.forkIO

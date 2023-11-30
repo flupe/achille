@@ -85,9 +85,15 @@ instance (Monad m, AchilleIO m) => AchilleIO (PrimTask m) where
   log = lift . AIO.log
   readCommand cmd args = lift (AIO.readCommand cmd args)
   glob root pat = lift (AIO.glob root pat) <* tell (dependsOnPattern pat)
-
 -- NOTE(flupe): ^ maybe for AchilleIO (PrimTask m) we actually want to do
 --                smart path transformation?
+
+  newEmptyMVar = lift AIO.newEmptyMVar
+  readMVar     = lift . AIO.readMVar
+  putMVar v    = lift . AIO.putMVar v
+  fork         = error "shouldn't use fork inside stateful computation"
+
+
 
 data LogType
   = LogErr

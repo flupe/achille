@@ -13,6 +13,7 @@ import Control.Monad.Writer.Strict
 import Control.Monad.State.Strict
 import Control.Monad.Reader
 import Control.Monad.Trans (lift)
+import Control.Monad.IO.Class (liftIO)
 
 import Data.Text (Text)
 import Data.ByteString      qualified as BS
@@ -21,6 +22,7 @@ import System.Directory     qualified as Directory
 import System.FilePath      qualified as FilePath
 import System.FilePath.Glob qualified as Glob
 import Data.Map.Strict      qualified as Map
+import Control.Concurrent   qualified as Concurrent
 
 
 import Achille.CLI (processDeps)
@@ -71,6 +73,10 @@ instance AchilleIO FakeIO where
     glob r pat = asks (globFS r pat)
     getCurrentTime = undefined
 
+    newEmptyMVar = liftIO Concurrent.newEmptyMVar
+    putMVar v = liftIO . Concurrent.putMVar v
+    readMVar = liftIO . Concurrent.readMVar
+    fork m = m
 
 runFakeIO :: FakeIO a -> FileSystem -> IO (a, [IOActions])
 runFakeIO c fs = runWriterT (runReaderT c fs)

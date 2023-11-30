@@ -1,12 +1,14 @@
 {-# LANGUAGE DerivingStrategies #-}
 module Achille.Core.Program where
 
-import Prelude hiding ((.), id, seq, (>>=), (>>), fst, snd)
+import Prelude hiding ((.), id, seq, (>>), fst, snd)
 import Prelude qualified as Prelude
 
 import Control.Category
+import Control.Monad (foldM)
 import Control.Monad.Reader.Class
 import Control.Monad.Writer.Class
+import Control.Concurrent (MVar)
 
 import GHC.Stack (HasCallStack)
 import Data.Binary (Binary)
@@ -100,27 +102,35 @@ data BoxedValue =
                   , lastChange :: UTCTime
                   }
 
-data Env = Env (IntMap BoxedValue) {-# UNPACK #-} !Int
+data Env = Env (IntMap (MVar (Maybe BoxedValue))) {-# UNPACK #-} !Int
 
 emptyEnv :: Env
 emptyEnv = Env IntMap.empty 0
 
-lookupEnv :: Env -> Int -> Maybe a
-lookupEnv (Env env _) k = env !? k <&> \(Boxed v _) -> unsafeCoerce v
+lookupEnv :: (Monad m, AchilleIO m) => Env -> Int -> m (Maybe a)
+lookupEnv (Env env _) k
+  | Just var <- env !? k = AIO.readMVar var >>= \case
+      Just (Boxed v _) -> pure (Just (unsafeCoerce v))
+      Nothing          -> pure Nothing
+lookupEnv _ _ = pure Nothing
 
-bindEnv :: Env -> UTCTime -> Value a -> Env
-bindEnv (Env env n) t x = Env (IntMap.insert n (Boxed x t) env) (n + 1)
+bindEnv :: (Monad m, AchilleIO m) => Env -> m (MVar (Maybe BoxedValue), Env)
+bindEnv (Env env n) = do
+  var <- AIO.newEmptyMVar
+  pure (var, Env (IntMap.insert n var env) (n + 1))
 
-envChanged :: Env -> UTCTime -> IntSet -> Bool
-envChanged (Env env _) lastTime = IntSet.foldr' op False
+envChanged :: (Monad m, AchilleIO m) => Env -> UTCTime -> IntSet -> m Bool
+envChanged (Env env _) lastTime vars = foldM op False (IntSet.elems vars)
   -- NOTE(flupe): maybe we can early return once we reach True
   -- TODO(flupe): we shouldn't ever fail looking up the env,
   --              so we're not filtering enough variables...
-  where op :: Int -> Bool -> Bool
-        op k b =
+  where op :: (Monad m, AchilleIO m) => Bool -> Int -> m Bool
+        op b k =
           case env IntMap.!? k of
-            Just (Boxed _ t) -> lastTime < t || b
-            Nothing          -> b
+            Just var -> AIO.readMVar var >>= \case
+              Just (Boxed _ t) -> pure (lastTime < t || b)
+              Nothing  -> pure b
+            Nothing -> pure b -- NOTE(flupe): shouldn't ever fail
 
 depsClean :: Map Path UTCTime -> UTCTime -> DynDeps -> Bool
 depsClean edits lastT (getFileDeps -> fdeps) = getAll $ foldMap (All . isClean) fdeps
@@ -135,12 +145,25 @@ runProgramIn
   => Env -> Program m a -> PrimTask m (Value a)
 runProgramIn env t = case t of
 
-  Var k -> maybe halt pure $ lookupEnv env k
+  Var k -> maybe halt pure =<< lift (lookupEnv env k)
 
   Seq x y -> do
-    (cx, cy) <- splitCache
-    (_,  cx') <- withCache cx $ runProgramIn env x
+    (cx, cy)  <- splitCache
+    ctx <- ask
+    mvx <- lift AIO.newEmptyMVar
+
+    -- run x in seperate thread
+    lift $ AIO.fork do
+      (_, cx', deps) <- runPrimTask (runProgramIn env x) ctx cx
+      AIO.putMVar mvx (cx', deps)
+
+    -- run y without waiting for x
     (vy, cy') <- withCache cy $ runProgramIn env y
+
+    -- now we dow wait for x
+    (cx', deps) <- lift $ AIO.readMVar mvx
+    tell deps
+
     joinCache cx' cy'
     forward vy
 
@@ -150,15 +173,30 @@ runProgramIn env t = case t of
   -- it is important to know if it changed *since the last time* a task has been executed.
   Bind x f -> do
     cached :: Maybe (UTCTime, Cache) <- fromCache
-    Context{currentTime} <- ask
+    ctx@Context{currentTime} <- ask
     let (cx, cf) = maybe (Cache.emptyCache, Cache.emptyCache)
                          (Cache.splitCache . Prelude.snd)
                          cached
         lastChange = maybe zeroTime Prelude.fst cached
-    (vx, cx') <- withCache cx $ runProgramIn env x
-    let lastChange' = if any hasChanged vx then currentTime else lastChange
-    let env' = maybe env (bindEnv env lastChange') vx
+
+    (var, env') <- lift (bindEnv env)
+    mvcx <- lift AIO.newEmptyMVar
+
+    -- fork and run x
+    lift $ AIO.fork do
+      res@(vx, _, _) <- runPrimTask (runProgramIn env x) ctx cx
+      let lastChange' = if any hasChanged vx then currentTime else lastChange
+      AIO.putMVar var (vx <&> \v -> Boxed v lastChange')
+      AIO.putMVar mvcx res
+
+    -- run f without waiting for x
     (vy, cf') <- withCache cf $ runProgramIn env' f
+
+    -- now we do wait for x
+    (vx, cx', deps) <- lift (AIO.readMVar mvcx)
+    tell deps
+
+    let lastChange' = if any hasChanged vx then currentTime else lastChange
     toCache (lastChange', Cache.joinCache cx' cf')
     forward vy
     -- TODO(flupe): propagate failure to environment
@@ -171,8 +209,9 @@ runProgramIn env t = case t of
           case cached of
             Just (t, _, d, c) -> (t       , d     , c               )
             _                 -> (zeroTime, mempty, Cache.emptyCache)
+    dirtyEnv <- lift (envChanged env lastRun vs)
     if  isNothing cached
-     || envChanged env lastRun vs
+     || dirtyEnv
      || not (depsClean updatedFiles lastRun deps) then do
       ((v, cache'), deps) <- listen $ withCache cache $ local (\c -> c {lastTime = lastRun}) 
                                                       $ runProgramIn env p
@@ -239,22 +278,47 @@ runProgramIn env t = case t of
       forChanges []           _     = pure (Just [], [])
       forChanges (Deleted   :vs) cs = forChanges vs (drop 1 cs) <&> first (fmap (Deleted:))
       forChanges (Inserted x:vs) cs = do
-        Context{currentTime} <- ask
-        let env' = bindEnv env zeroTime (value False x)
-        (y, cy) <- withCache Cache.emptyCache $ runProgramIn env' f
+        ctx@Context{currentTime} <- ask
+
+        (var, env') <- lift (bindEnv env)
+        lift (AIO.putMVar var (Just (Boxed (value False x) zeroTime)))
+
+        mvy <- lift AIO.newEmptyMVar
+
+        lift $ AIO.fork do
+          res <- runPrimTask (runProgramIn env' f) ctx Cache.emptyCache
+          AIO.putMVar mvy res
+
+        (changes, caches) <- forChanges vs cs
+        (y, cy, deps) <- lift (AIO.readMVar mvy)
+        tell deps
+
         case y of
-          Nothing -> pure (Nothing, (zeroTime, cy) : cs)
-          Just vy -> forChanges vs cs <&> bimap (fmap (Inserted (theVal vy):)) ((currentTime, cy):)
+          Nothing -> pure (Nothing, (zeroTime, cy) : caches)
+          Just vy -> pure (fmap (Inserted (theVal vy):) changes, (currentTime, cy):caches)
+
       forChanges (Kept v:vs) cs = do
-        Context{currentTime} <- ask
-        let ((vlastChange, cv), cs') =
-              fromMaybe ((zeroTime, Cache.emptyCache), []) (uncons cs)
+        ctx@Context{currentTime} <- ask
+
+        let ((vlastChange, cv), cs') = fromMaybe ((zeroTime, Cache.emptyCache), []) (uncons cs)
         let vtchange = if hasChanged v then currentTime else vlastChange
-        let env' = bindEnv env vtchange v
-        (y, cy) <- withCache cv $ runProgramIn env' f
+
+        (var, env') <- lift (bindEnv env)
+        lift (AIO.putMVar var (Just (Boxed v vtchange)))
+
+        mvy <- lift AIO.newEmptyMVar
+
+        lift $ AIO.fork do
+          res <- runPrimTask (runProgramIn env' f) ctx cv
+          AIO.putMVar mvy res
+
+        (changes, caches) <- forChanges vs cs'
+        (y, cy, deps) <- lift (AIO.readMVar mvy)
+        tell deps
+
         case y of
           Nothing -> pure (Nothing, [(vtchange, cy)])
-          Just vy -> forChanges vs cs' <&> bimap (fmap (Kept vy:)) ((vtchange, cy):)
+          Just vy -> pure (fmap (Kept vy:) changes, (vtchange, cy):caches)
 
   Scoped x y -> do
     (cx, cy) <- splitCache
